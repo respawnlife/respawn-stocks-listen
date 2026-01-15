@@ -244,7 +244,9 @@ function App() {
               funds: currentConfigForSave.funds,
               timestamp: new Date().toISOString(),
             };
-            saveHistoryData(today, historyData);
+            saveHistoryData(today, historyData).catch((error) => {
+              console.error('保存历史数据失败:', error);
+            });
 
             return next;
           });
@@ -261,17 +263,11 @@ function App() {
     };
   }, [initialized]);
 
-  // 监听配置变化（从 localStorage）
+  // 定期检查配置变化（从 IndexedDB）
   useEffect(() => {
     if (!config) return;
 
-    const handleStorageChange = async () => {
-      const newConfig = await loadHoldingsConfig();
-      setConfig(newConfig);
-    };
-
-    window.addEventListener('storage', handleStorageChange);
-    // 也定期检查配置变化（因为同窗口修改不会触发 storage 事件）
+    // IndexedDB 不会触发 storage 事件，所以定期检查配置变化
     const checkInterval = setInterval(async () => {
       const newConfig = await loadHoldingsConfig();
       if (JSON.stringify(newConfig) !== JSON.stringify(config)) {
@@ -280,7 +276,6 @@ function App() {
     }, 1000);
 
     return () => {
-      window.removeEventListener('storage', handleStorageChange);
       clearInterval(checkInterval);
     };
   }, [config]);

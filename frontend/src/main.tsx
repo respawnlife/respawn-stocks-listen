@@ -9,7 +9,7 @@ if ('Notification' in window && Notification.permission === 'default') {
   Notification.requestPermission();
 }
 
-// 初始化配置：如果 localStorage 中没有配置，使用前端项目内的默认配置初始化
+// 初始化配置：从 IndexedDB 加载配置，如果没有则使用默认配置
 initializeConfig().then(() => {
   // 配置初始化完成后，渲染应用
   ReactDOM.createRoot(document.getElementById('root')!).render(
