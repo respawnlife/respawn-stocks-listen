@@ -92,5 +92,7 @@ export function initConfigFromPythonConfig(pythonConfig?: any): void {
     };
   }
 
-  saveHoldingsConfig(config);
+  saveHoldingsConfig(config).catch((error) => {
+    console.error('保存配置失败:', error);
+  });
 }

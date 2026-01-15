@@ -145,10 +145,11 @@ export const StockTable: React.FC<StockTableProps> = ({ stocks, privacyMode, con
       },
     };
 
-    saveHoldingsConfig(newConfig);
-    onConfigUpdate(newConfig);
-    setEditingTransaction(null);
-    setEditForm({ time: '', quantity: '', price: '' });
+    saveHoldingsConfig(newConfig).then(() => {
+      onConfigUpdate(newConfig);
+      setEditingTransaction(null);
+      setEditForm({ time: '', quantity: '', price: '' });
+    });
   };
 
   const handleDeleteTransaction = (stockCode: string, index: number) => {
@@ -186,9 +187,10 @@ export const StockTable: React.FC<StockTableProps> = ({ stocks, privacyMode, con
       },
     };
 
-    saveHoldingsConfig(newConfig);
-    onConfigUpdate(newConfig);
-    setDeletingTransaction(null);
+    saveHoldingsConfig(newConfig).then(() => {
+      onConfigUpdate(newConfig);
+      setDeletingTransaction(null);
+    });
   };
 
   const handleDeleteStock = (stockCode: string) => {
@@ -255,10 +257,11 @@ export const StockTable: React.FC<StockTableProps> = ({ stocks, privacyMode, con
       historical_holdings: newHistoricalHoldings,
     };
 
-    saveHoldingsConfig(newConfig);
-    onConfigUpdate(newConfig);
-    setDeletingStock(null);
-    setDeleteOption('refund'); // 重置选项
+    saveHoldingsConfig(newConfig).then(() => {
+      onConfigUpdate(newConfig);
+      setDeletingStock(null);
+      setDeleteOption('refund'); // 重置选项
+    });
   };
 
   return (

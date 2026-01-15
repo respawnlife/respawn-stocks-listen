@@ -105,7 +105,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
         },
       };
 
-      saveHoldingsConfig(newConfig);
+      await saveHoldingsConfig(newConfig);
       onConfigUpdate(newConfig);
       
       if (onStockAdded) {
@@ -243,7 +243,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
         },
       };
 
-      saveHoldingsConfig(newConfig);
+      await saveHoldingsConfig(newConfig);
       onConfigUpdate(newConfig);
       
       if (onStockAdded) {
@@ -332,9 +332,10 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
       newConfig.watchlist = restWatchlist;
     }
 
-    saveHoldingsConfig(newConfig);
-    onConfigUpdate(newConfig);
-    handleCloseTransaction();
+    saveHoldingsConfig(newConfig).then(() => {
+      onConfigUpdate(newConfig);
+      handleCloseTransaction();
+    });
   };
 
   // 当选择已有股票时，自动设置价格
@@ -392,9 +393,10 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
       },
     };
 
-    saveHoldingsConfig(newConfig);
-    onConfigUpdate(newConfig);
-    handleCloseFundsDialog();
+    saveHoldingsConfig(newConfig).then(() => {
+      onConfigUpdate(newConfig);
+      handleCloseFundsDialog();
+    });
   };
 
   return (
@@ -828,10 +830,11 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
                 historical_holdings: newHistoricalHoldings,
               };
 
-              saveHoldingsConfig(newConfig);
-              onConfigUpdate(newConfig);
-              setEditingHistoryTransaction(null);
-              setHistoryEditForm({ time: '', quantity: '', price: '' });
+              saveHoldingsConfig(newConfig).then(() => {
+                onConfigUpdate(newConfig);
+                setEditingHistoryTransaction(null);
+                setHistoryEditForm({ time: '', quantity: '', price: '' });
+              });
             }}
             variant="contained"
           >
@@ -867,9 +870,10 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
                 historical_holdings: newHistoricalHoldings.length > 0 ? newHistoricalHoldings : undefined,
               };
 
-              saveHoldingsConfig(newConfig);
-              onConfigUpdate(newConfig);
-              setDeletingHistoryTransaction(null);
+              saveHoldingsConfig(newConfig).then(() => {
+                onConfigUpdate(newConfig);
+                setDeletingHistoryTransaction(null);
+              });
             }}
             variant="contained"
             color="error"

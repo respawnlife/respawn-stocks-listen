@@ -40,7 +40,9 @@ export function importConfigFromJSON(jsonString: string): boolean {
       stocks: pythonConfig.stocks || {},
     };
 
-    saveHoldingsConfig(config);
+    saveHoldingsConfig(config).catch((error) => {
+      console.error('保存配置失败:', error);
+    });
     return true;
   } catch (error) {
     console.error('导入配置失败:', error);

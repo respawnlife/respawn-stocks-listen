@@ -22,11 +22,11 @@ const theme = createTheme({
 const POLL_INTERVAL = 2000; // 2秒更新一次
 
 function App() {
-  const [config, setConfig] = useState<HoldingsConfig>(loadHoldingsConfig());
+  const [config, setConfig] = useState<HoldingsConfig | null>(null);
   const [stockStates, setStockStates] = useState<Map<string, StockState>>(new Map());
   const [initialized, setInitialized] = useState(false);
   const [alertMessage, setAlertMessage] = useState<string>('');
-  const configRef = useRef<HoldingsConfig>(config);
+  const configRef = useRef<HoldingsConfig | null>(null);
   
   // 保持 configRef 与 config 同步
   useEffect(() => {
@@ -35,6 +35,8 @@ function App() {
 
   // 初始化股票状态
   useEffect(() => {
+    if (!config) return;
+    
     setStockStates((prevStates) => {
       const states = new Map<string, StockState>();
       
@@ -144,10 +146,10 @@ function App() {
       setInitialized(true);
     };
 
-    if (stockStates.size > 0 && !initialized) {
+    if (stockStates.size > 0 && !initialized && config) {
       initialize();
     }
-  }, [stockStates, initialized]);
+  }, [stockStates, initialized, config]);
 
   // 主循环：定时更新数据
   useEffect(() => {
@@ -261,15 +263,17 @@ function App() {
 
   // 监听配置变化（从 localStorage）
   useEffect(() => {
-    const handleStorageChange = () => {
-      const newConfig = loadHoldingsConfig();
+    if (!config) return;
+
+    const handleStorageChange = async () => {
+      const newConfig = await loadHoldingsConfig();
       setConfig(newConfig);
     };
 
     window.addEventListener('storage', handleStorageChange);
     // 也定期检查配置变化（因为同窗口修改不会触发 storage 事件）
-    const checkInterval = setInterval(() => {
-      const newConfig = loadHoldingsConfig();
+    const checkInterval = setInterval(async () => {
+      const newConfig = await loadHoldingsConfig();
       if (JSON.stringify(newConfig) !== JSON.stringify(config)) {
         setConfig(newConfig);
       }
@@ -286,13 +290,14 @@ function App() {
   );
 
   // 切换隐私模式
-  const handlePrivacyModeToggle = () => {
+  const handlePrivacyModeToggle = async () => {
+    if (!config) return;
     const newConfig = {
       ...config,
       privacy_mode: !config.privacy_mode,
     };
     setConfig(newConfig);
-    saveHoldingsConfig(newConfig);
+    await saveHoldingsConfig(newConfig);
   };
 
   // 处理配置更新（添加自选股后）
@@ -357,6 +362,17 @@ function App() {
       console.error('获取新添加股票数据失败:', error);
     }
   };
+
+  if (!config) {
+    return (
+      <ThemeProvider theme={theme}>
+        <CssBaseline />
+        <Container maxWidth="xl" sx={{ mt: 2, mb: 2 }}>
+          <Typography>加载配置中...</Typography>
+        </Container>
+      </ThemeProvider>
+    );
+  }
 
   return (
     <ThemeProvider theme={theme}>
