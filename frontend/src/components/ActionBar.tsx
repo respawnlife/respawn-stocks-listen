@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Box, Button, Dialog, DialogTitle, DialogContent, DialogActions, TextField, MenuItem, Select, FormControl, InputLabel, Typography } from '@mui/material';
-import { Add, ShoppingCart, AccountBalance } from '@mui/icons-material';
+import { Box, Button, Dialog, DialogTitle, DialogContent, DialogActions, TextField, MenuItem, Select, FormControl, InputLabel, Typography, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, IconButton } from '@mui/material';
+import { Add, ShoppingCart, AccountBalance, History, Edit, Delete } from '@mui/icons-material';
 import { getRealtimePrice } from '../services/stockData';
-import { HoldingsConfig, Transaction } from '../types';
+import { HoldingsConfig, Transaction, HistoricalHolding } from '../types';
 import { saveHoldingsConfig } from '../services/storage';
+import { formatPriceFixed } from '../utils/calculations';
 
 interface ActionBarProps {
   config: HoldingsConfig;
@@ -35,6 +36,23 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
   const [openFundsDialog, setOpenFundsDialog] = useState(false);
   const [fundsAmount, setFundsAmount] = useState('');
   const [fundsOperation, setFundsOperation] = useState<'add' | 'subtract'>('add');
+
+  // 查看历史交易相关状态
+  const [openHistoryDialog, setOpenHistoryDialog] = useState(false);
+  const [editingHistoryTransaction, setEditingHistoryTransaction] = useState<{
+    historicalIndex: number;
+    transactionIndex: number;
+    transaction: Transaction;
+  } | null>(null);
+  const [deletingHistoryTransaction, setDeletingHistoryTransaction] = useState<{
+    historicalIndex: number;
+    transactionIndex: number;
+  } | null>(null);
+  const [historyEditForm, setHistoryEditForm] = useState<{
+    time: string;
+    quantity: string;
+    price: string;
+  }>({ time: '', quantity: '', price: '' });
 
   const handleOpen = () => {
     setOpen(true);
@@ -382,13 +400,23 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
   return (
     <>
       <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1 }}>
-        <Button
-          variant="outlined"
-          startIcon={<AccountBalance />}
-          onClick={handleOpenFundsDialog}
-        >
-          增减本金
-        </Button>
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          <Button
+            variant="outlined"
+            startIcon={<AccountBalance />}
+            onClick={handleOpenFundsDialog}
+          >
+            增减本金
+          </Button>
+          <Button
+            variant="outlined"
+            startIcon={<History />}
+            onClick={() => setOpenHistoryDialog(true)}
+            disabled={!config.historical_holdings || config.historical_holdings.length === 0}
+          >
+            查看历史交易
+          </Button>
+        </Box>
         <Box sx={{ display: 'flex', gap: 1 }}>
           <Button
             variant="contained"
@@ -641,6 +669,212 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
             disabled={!fundsAmount || parseFloat(fundsAmount) <= 0}
           >
             确认
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* 查看历史交易对话框 */}
+      <Dialog open={openHistoryDialog} onClose={() => setOpenHistoryDialog(false)} maxWidth="lg" fullWidth>
+        <DialogTitle>历史交易记录</DialogTitle>
+        <DialogContent>
+          {config.historical_holdings && config.historical_holdings.length > 0 ? (
+            <TableContainer component={Paper} sx={{ mt: 2 }}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>股票代码</TableCell>
+                    <TableCell>股票名称</TableCell>
+                    <TableCell>交易时间</TableCell>
+                    <TableCell>数量（股）</TableCell>
+                    <TableCell>单价</TableCell>
+                    <TableCell>总金额</TableCell>
+                    <TableCell align="right">操作</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {config.historical_holdings.map((historical, historicalIndex) =>
+                    historical.transactions.map((transaction, transactionIndex) => (
+                      <TableRow key={`${historicalIndex}-${transactionIndex}`}>
+                        <TableCell>{historical.code}</TableCell>
+                        <TableCell>{historical.name}</TableCell>
+                        <TableCell>{transaction.time}</TableCell>
+                        <TableCell>{Math.floor(transaction.quantity).toLocaleString()}</TableCell>
+                        <TableCell>{formatPriceFixed(transaction.price)}</TableCell>
+                        <TableCell>{(transaction.quantity * transaction.price).toFixed(2)}</TableCell>
+                        <TableCell align="right">
+                          <IconButton
+                            size="small"
+                            onClick={() => {
+                              setEditingHistoryTransaction({
+                                historicalIndex,
+                                transactionIndex,
+                                transaction,
+                              });
+                              setHistoryEditForm({
+                                time: transaction.time,
+                                quantity: transaction.quantity.toString(),
+                                price: transaction.price.toString(),
+                              });
+                            }}
+                            sx={{ color: '#1976d2' }}
+                          >
+                            <Edit fontSize="small" />
+                          </IconButton>
+                          <IconButton
+                            size="small"
+                            onClick={() => setDeletingHistoryTransaction({ historicalIndex, transactionIndex })}
+                            sx={{ color: 'error.main' }}
+                          >
+                            <Delete fontSize="small" />
+                          </IconButton>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          ) : (
+            <Typography sx={{ mt: 2, textAlign: 'center', color: 'text.secondary' }}>
+              暂无历史交易记录
+            </Typography>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenHistoryDialog(false)}>关闭</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* 编辑历史交易对话框 */}
+      <Dialog open={!!editingHistoryTransaction} onClose={() => setEditingHistoryTransaction(null)} maxWidth="sm" fullWidth>
+        <DialogTitle>编辑历史交易记录</DialogTitle>
+        <DialogContent>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
+            <TextField
+              label="交易时间"
+              type="datetime-local"
+              fullWidth
+              variant="outlined"
+              value={historyEditForm.time ? (() => {
+                try {
+                  const date = new Date(historyEditForm.time);
+                  const year = date.getFullYear();
+                  const month = String(date.getMonth() + 1).padStart(2, '0');
+                  const day = String(date.getDate()).padStart(2, '0');
+                  const hours = String(date.getHours()).padStart(2, '0');
+                  const minutes = String(date.getMinutes()).padStart(2, '0');
+                  return `${year}-${month}-${day}T${hours}:${minutes}`;
+                } catch {
+                  return '';
+                }
+              })() : ''}
+              onChange={(e) => {
+                const dateTime = e.target.value;
+                if (dateTime) {
+                  const date = new Date(dateTime);
+                  const year = date.getFullYear();
+                  const month = String(date.getMonth() + 1).padStart(2, '0');
+                  const day = String(date.getDate()).padStart(2, '0');
+                  const hours = String(date.getHours()).padStart(2, '0');
+                  const minutes = String(date.getMinutes()).padStart(2, '0');
+                  const seconds = String(date.getSeconds()).padStart(2, '0');
+                  setHistoryEditForm({ ...historyEditForm, time: `${year}-${month}-${day} ${hours}:${minutes}:${seconds}` });
+                }
+              }}
+              InputLabelProps={{ shrink: true }}
+            />
+            <TextField
+              label="数量（股）"
+              type="number"
+              fullWidth
+              variant="outlined"
+              value={historyEditForm.quantity}
+              onChange={(e) => setHistoryEditForm({ ...historyEditForm, quantity: e.target.value })}
+              inputProps={{ min: 1, step: 1 }}
+            />
+            <TextField
+              label="单价"
+              type="number"
+              fullWidth
+              variant="outlined"
+              value={historyEditForm.price}
+              onChange={(e) => setHistoryEditForm({ ...historyEditForm, price: e.target.value })}
+              inputProps={{ min: 0, step: 0.001 }}
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setEditingHistoryTransaction(null)}>取消</Button>
+          <Button
+            onClick={() => {
+              if (!editingHistoryTransaction) return;
+              const { historicalIndex, transactionIndex } = editingHistoryTransaction;
+              const quantity = parseFloat(historyEditForm.quantity);
+              const price = parseFloat(historyEditForm.price);
+
+              if (isNaN(quantity) || quantity <= 0 || isNaN(price) || price <= 0 || !historyEditForm.time) {
+                return;
+              }
+
+              const newHistoricalHoldings = [...(config.historical_holdings || [])];
+              newHistoricalHoldings[historicalIndex].transactions[transactionIndex] = {
+                time: historyEditForm.time,
+                quantity: quantity,
+                price: price,
+              };
+
+              const newConfig = {
+                ...config,
+                historical_holdings: newHistoricalHoldings,
+              };
+
+              saveHoldingsConfig(newConfig);
+              onConfigUpdate(newConfig);
+              setEditingHistoryTransaction(null);
+              setHistoryEditForm({ time: '', quantity: '', price: '' });
+            }}
+            variant="contained"
+          >
+            保存
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* 删除历史交易确认对话框 */}
+      <Dialog open={!!deletingHistoryTransaction} onClose={() => setDeletingHistoryTransaction(null)}>
+        <DialogTitle>确认删除</DialogTitle>
+        <DialogContent>
+          <Typography>确定要删除这条历史交易记录吗？此操作不可恢复。</Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeletingHistoryTransaction(null)}>取消</Button>
+          <Button
+            onClick={() => {
+              if (!deletingHistoryTransaction) return;
+              const { historicalIndex, transactionIndex } = deletingHistoryTransaction;
+              const newHistoricalHoldings = [...(config.historical_holdings || [])];
+              
+              // 删除交易记录
+              newHistoricalHoldings[historicalIndex].transactions.splice(transactionIndex, 1);
+              
+              // 如果该历史持仓没有交易记录了，删除整个历史持仓
+              if (newHistoricalHoldings[historicalIndex].transactions.length === 0) {
+                newHistoricalHoldings.splice(historicalIndex, 1);
+              }
+
+              const newConfig = {
+                ...config,
+                historical_holdings: newHistoricalHoldings.length > 0 ? newHistoricalHoldings : undefined,
+              };
+
+              saveHoldingsConfig(newConfig);
+              onConfigUpdate(newConfig);
+              setDeletingHistoryTransaction(null);
+            }}
+            variant="contained"
+            color="error"
+          >
+            删除
           </Button>
         </DialogActions>
       </Dialog>

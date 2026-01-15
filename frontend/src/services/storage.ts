@@ -61,6 +61,7 @@ export async function initializeConfig(): Promise<HoldingsConfig> {
         // 确保新格式字段存在
         if (!config.holdings) config.holdings = {};
         if (!config.watchlist) config.watchlist = {};
+        if (!config.historical_holdings) config.historical_holdings = [];
         
         console.log('从 localStorage 读取配置');
         return config;
@@ -128,6 +129,7 @@ export function loadHoldingsConfig(): HoldingsConfig {
         // 确保新格式字段存在
         if (!config.holdings) config.holdings = {};
         if (!config.watchlist) config.watchlist = {};
+        if (!config.historical_holdings) config.historical_holdings = [];
         
         return config;
       }

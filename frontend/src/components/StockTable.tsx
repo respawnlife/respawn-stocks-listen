@@ -18,6 +18,11 @@ import {
   DialogActions,
   TextField,
   Typography,
+  Radio,
+  RadioGroup,
+  FormControlLabel,
+  FormControl,
+  FormLabel,
 } from '@mui/material';
 import {
   Edit,
@@ -48,6 +53,7 @@ export const StockTable: React.FC<StockTableProps> = ({ stocks, privacyMode, con
     index: number;
   } | null>(null);
   const [deletingStock, setDeletingStock] = useState<string | null>(null);
+  const [deleteOption, setDeleteOption] = useState<'refund' | 'keep'>('refund');
   const [editForm, setEditForm] = useState<{
     time: string;
     quantity: string;
@@ -193,11 +199,16 @@ export const StockTable: React.FC<StockTableProps> = ({ stocks, privacyMode, con
     if (!deletingStock) return;
 
     const stockCode = deletingStock;
+    const stock = stocks.find(s => s.code === stockCode);
+    const stockName = stock?.name || stockCode;
+    
     let totalRefundAmount = 0;
+    let transactionsToMove: Transaction[] = [];
 
     // 检查是否在持仓中，如果在，计算所有交易记录的总金额
     if (config.holdings[stockCode]) {
       const holding = config.holdings[stockCode];
+      transactionsToMove = holding.transactions;
       // 计算所有交易记录的总金额
       totalRefundAmount = holding.transactions.reduce(
         (sum, transaction) => sum + transaction.quantity * transaction.price,
@@ -212,8 +223,26 @@ export const StockTable: React.FC<StockTableProps> = ({ stocks, privacyMode, con
     const newWatchlist = { ...config.watchlist };
     delete newWatchlist[stockCode];
 
-    // 更新可用资金（退回所有交易记录的资金）
-    const newAvailableFunds = config.funds.available_funds + totalRefundAmount;
+    // 根据选项处理
+    let newAvailableFunds = config.funds.available_funds;
+    let newHistoricalHoldings = config.historical_holdings || [];
+
+    if (deleteOption === 'refund') {
+      // 选项1：删除并退回所有交易
+      newAvailableFunds = config.funds.available_funds + totalRefundAmount;
+    } else {
+      // 选项2：删除但不退回交易，转移到历史交易数据
+      if (transactionsToMove.length > 0) {
+        newHistoricalHoldings = [
+          ...newHistoricalHoldings,
+          {
+            code: stockCode,
+            name: stockName,
+            transactions: transactionsToMove,
+          },
+        ];
+      }
+    }
 
     const newConfig = {
       ...config,
@@ -223,11 +252,13 @@ export const StockTable: React.FC<StockTableProps> = ({ stocks, privacyMode, con
       },
       holdings: newHoldings,
       watchlist: newWatchlist,
+      historical_holdings: newHistoricalHoldings,
     };
 
     saveHoldingsConfig(newConfig);
     onConfigUpdate(newConfig);
     setDeletingStock(null);
+    setDeleteOption('refund'); // 重置选项
   };
 
   return (
@@ -534,23 +565,53 @@ export const StockTable: React.FC<StockTableProps> = ({ stocks, privacyMode, con
       </Dialog>
 
       {/* 删除自选股确认对话框 */}
-      <Dialog open={!!deletingStock} onClose={() => setDeletingStock(null)}>
+      <Dialog open={!!deletingStock} onClose={() => { setDeletingStock(null); setDeleteOption('refund'); }} maxWidth="sm" fullWidth>
         <DialogTitle>确认删除自选股</DialogTitle>
         <DialogContent>
-          <Typography>
-            确定要删除该自选股吗？此操作将：
+          <Typography sx={{ mb: 2 }}>
+            确定要删除该自选股吗？请选择删除方式：
           </Typography>
-          <Typography component="ul" sx={{ mt: 1, pl: 2 }}>
-            <li>删除该股票的所有交易记录</li>
-            <li>退回所有交易记录对应的资金到可用资金</li>
-            <li>从自选列表中移除该股票</li>
-          </Typography>
-          <Typography sx={{ mt: 2, fontWeight: 'bold' }}>
+          <FormControl component="fieldset">
+            <RadioGroup
+              value={deleteOption}
+              onChange={(e) => setDeleteOption(e.target.value as 'refund' | 'keep')}
+            >
+              <FormControlLabel
+                value="refund"
+                control={<Radio />}
+                label={
+                  <Box>
+                    <Typography variant="body1" sx={{ fontWeight: 'bold' }}>
+                      删除并退回所有交易
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      删除该股票的所有交易记录，并将交易金额退回可用资金
+                    </Typography>
+                  </Box>
+                }
+              />
+              <FormControlLabel
+                value="keep"
+                control={<Radio />}
+                label={
+                  <Box>
+                    <Typography variant="body1" sx={{ fontWeight: 'bold' }}>
+                      删除但保留交易记录
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      删除该股票，但将交易记录转移到历史交易数据中，不退回资金
+                    </Typography>
+                  </Box>
+                }
+              />
+            </RadioGroup>
+          </FormControl>
+          <Typography sx={{ mt: 2, fontWeight: 'bold', color: 'error.main' }}>
             此操作不可恢复，确定要继续吗？
           </Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDeletingStock(null)}>取消</Button>
+          <Button onClick={() => { setDeletingStock(null); setDeleteOption('refund'); }}>取消</Button>
           <Button onClick={handleConfirmDeleteStock} variant="contained" color="error">
             确认删除
           </Button>

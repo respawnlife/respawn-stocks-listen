@@ -1,7 +1,7 @@
 import React from 'react';
 import { Box, Typography, Paper, IconButton, Tooltip } from '@mui/material';
 import { Visibility, VisibilityOff } from '@mui/icons-material';
-import { StockState } from '../types';
+import { StockState, HoldingsConfig } from '../types';
 
 interface StatisticsProps {
   stocks: StockState[];
@@ -11,6 +11,7 @@ interface StatisticsProps {
   };
   privacyMode: boolean;
   onPrivacyModeToggle: () => void;
+  config: HoldingsConfig;
 }
 
 export const Statistics: React.FC<StatisticsProps> = ({
@@ -18,6 +19,7 @@ export const Statistics: React.FC<StatisticsProps> = ({
   funds,
   privacyMode,
   onPrivacyModeToggle,
+  config,
 }) => {
   const formatPrivacyValue = (value: number): string => {
     return privacyMode ? '***' : value.toFixed(2);
@@ -31,8 +33,17 @@ export const Statistics: React.FC<StatisticsProps> = ({
     return sum;
   }, 0);
 
-  // 计算实时市值（可用资金 + 持仓市值）
-  const totalAssets = funds.available_funds + totalHoldingValue;
+  // 计算历史交易占用的资金（历史交易不应该算在可用资金中，但应该算在总资产中）
+  const historicalFundsUsed = (config.historical_holdings || []).reduce((sum, historical) => {
+    return sum + historical.transactions.reduce(
+      (transactionSum, transaction) => transactionSum + transaction.quantity * transaction.price,
+      0
+    );
+  }, 0);
+
+  // 计算实时市值（可用资金 + 持仓市值 + 历史交易占用的资金）
+  // 注意：历史交易占用的资金已经不在available_funds中了，所以需要加上
+  const totalAssets = funds.available_funds + totalHoldingValue + historicalFundsUsed;
 
   // 计算持仓股票数量
   const holdingStockCount = stocks.filter(

@@ -18,6 +18,13 @@ export interface WatchlistConfig {
   alert_down: number | null;
 }
 
+// 历史交易数据（已删除但保留交易的股票）
+export interface HistoricalHolding {
+  code: string;
+  name: string;
+  transactions: Transaction[];
+}
+
 // 持仓配置
 export interface HoldingsConfig {
   privacy_mode: boolean;
@@ -45,6 +52,7 @@ export interface HoldingsConfig {
   watchlist: {
     [code: string]: WatchlistConfig;
   };
+  historical_holdings?: HistoricalHolding[]; // 历史交易数据
 }
 
 // 股票状态

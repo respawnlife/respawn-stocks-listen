@@ -367,6 +367,7 @@ function App() {
           funds={config.funds}
           privacyMode={config.privacy_mode}
           onPrivacyModeToggle={handlePrivacyModeToggle}
+          config={config}
         />
         <ActionBar
           config={config}
