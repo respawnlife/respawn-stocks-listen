@@ -71,7 +71,6 @@ Thumbs.db
 .Python
 build/
 develop-eggs/
-dist/
 downloads/
 eggs/
 .eggs/
@@ -85,6 +84,7 @@ wheels/
 .installed.cfg
 *.egg
 
-# Frontend build artifacts (if built in root)
+# Frontend build artifacts
+# Note: dist/ in root is tracked in git, so it's not ignored
 frontend/dist/
 frontend/node_modules/
