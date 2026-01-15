@@ -3,7 +3,7 @@ import { formatStockCode } from '../utils/calculations';
 
 /**
  * 使用腾讯财经API批量获取股票实时价格（使用script标签，完全前端，无需代理）
- * API格式：http://qt.gtimg.cn/q=sh600000,sz000001
+ * API格式：https://qt.gtimg.cn/q=sh600000,sz000001
  * 返回格式：v_sh600000="1~浦发银行~600000~8.45~8.44~..."; v_sz000001="...";
  */
 export async function getMultipleRealtimePricesFromTencent(
@@ -24,7 +24,7 @@ export async function getMultipleRealtimePricesFromTencent(
     });
 
     // 构建URL：用逗号连接多个代码
-    const url = `http://qt.gtimg.cn/q=${formattedCodes.join(',')}`;
+    const url = `https://qt.gtimg.cn/q=${formattedCodes.join(',')}`;
     
     // 使用script标签直接加载（绕过CORS限制）
     return new Promise((resolve, reject) => {
@@ -146,7 +146,7 @@ export async function getMultipleRealtimePricesFromTencent(
 
 /**
  * 使用腾讯财经API获取单个股票实时价格（使用script标签，完全前端，无需代理）
- * API格式：http://qt.gtimg.cn/q=sh600000
+ * API格式：https://qt.gtimg.cn/q=sh600000
  * 返回格式：v_sh600000="1~浦发银行~600000~8.45~8.44~8.43~123456~12345~123~8.44~8.45~100~200~2024-01-15~15:00:00~3";
  */
 export async function getRealtimePriceFromTencent(
@@ -154,7 +154,7 @@ export async function getRealtimePriceFromTencent(
 ): Promise<StockRealtimeData | null> {
   try {
     const code = formatStockCode(stockCode);
-    const url = `http://qt.gtimg.cn/q=${code}`;
+    const url = `https://qt.gtimg.cn/q=${code}`;
     
     // 使用script标签直接加载（绕过CORS限制）
     return new Promise((resolve, reject) => {
