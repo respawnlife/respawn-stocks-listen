@@ -9,7 +9,7 @@ export default defineConfig({
     open: true,
   },
   build: {
-    outDir: fileURLToPath(new URL('../dist', import.meta.url)),
+    outDir: fileURLToPath(new URL('../docs', import.meta.url)),
     emptyOutDir: true,
   },
 });

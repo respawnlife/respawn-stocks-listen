@@ -85,6 +85,6 @@ wheels/
 *.egg
 
 # Frontend build artifacts
-# Note: dist/ in root is tracked in git, so it's not ignored
+dist/
 frontend/dist/
 frontend/node_modules/
