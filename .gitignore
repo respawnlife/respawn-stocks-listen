@@ -6,7 +6,7 @@ __pycache__/
 .Python
 build/
 develop-eggs/
-dist/
+# dist/ - removed to allow frontend build output in root dist/
 downloads/
 eggs/
 .eggs/
