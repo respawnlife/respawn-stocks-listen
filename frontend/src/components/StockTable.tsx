@@ -20,8 +20,6 @@ import {
   Typography,
 } from '@mui/material';
 import {
-  ExpandMore,
-  ExpandLess,
   Edit,
   Delete,
   Add,
@@ -49,6 +47,7 @@ export const StockTable: React.FC<StockTableProps> = ({ stocks, privacyMode, con
     stockCode: string;
     index: number;
   } | null>(null);
+  const [deletingStock, setDeletingStock] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<{
     time: string;
     quantity: string;
@@ -186,6 +185,51 @@ export const StockTable: React.FC<StockTableProps> = ({ stocks, privacyMode, con
     setDeletingTransaction(null);
   };
 
+  const handleDeleteStock = (stockCode: string) => {
+    setDeletingStock(stockCode);
+  };
+
+  const handleConfirmDeleteStock = () => {
+    if (!deletingStock) return;
+
+    const stockCode = deletingStock;
+    let totalRefundAmount = 0;
+
+    // 检查是否在持仓中，如果在，计算所有交易记录的总金额
+    if (config.holdings[stockCode]) {
+      const holding = config.holdings[stockCode];
+      // 计算所有交易记录的总金额
+      totalRefundAmount = holding.transactions.reduce(
+        (sum, transaction) => sum + transaction.quantity * transaction.price,
+        0
+      );
+    }
+
+    // 创建新的配置，删除该股票
+    const newHoldings = { ...config.holdings };
+    delete newHoldings[stockCode];
+
+    const newWatchlist = { ...config.watchlist };
+    delete newWatchlist[stockCode];
+
+    // 更新可用资金（退回所有交易记录的资金）
+    const newAvailableFunds = config.funds.available_funds + totalRefundAmount;
+
+    const newConfig = {
+      ...config,
+      funds: {
+        ...config.funds,
+        available_funds: newAvailableFunds,
+      },
+      holdings: newHoldings,
+      watchlist: newWatchlist,
+    };
+
+    saveHoldingsConfig(newConfig);
+    onConfigUpdate(newConfig);
+    setDeletingStock(null);
+  };
+
   return (
     <TableContainer component={Paper}>
       <Table size="small" sx={{ minWidth: 650 }}>
@@ -293,13 +337,32 @@ export const StockTable: React.FC<StockTableProps> = ({ stocks, privacyMode, con
                   </TableCell>
                   <TableCell>{stock.last_update_time}</TableCell>
                   <TableCell>
-                    <IconButton
-                      size="small"
-                      onClick={() => toggleRow(stock.code)}
-                      sx={{ color: '#1976d2' }}
-                    >
-                      {isExpanded ? <ExpandLess /> : <ExpandMore />}
-                    </IconButton>
+                    <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                      <Button
+                        size="small"
+                        onClick={() => toggleRow(stock.code)}
+                        sx={{
+                          color: '#1976d2',
+                          textTransform: 'none',
+                          minWidth: 'auto',
+                          padding: '4px 8px',
+                        }}
+                      >
+                        交易
+                      </Button>
+                      <Button
+                        size="small"
+                        onClick={() => handleDeleteStock(stock.code)}
+                        sx={{
+                          color: 'error.main',
+                          textTransform: 'none',
+                          minWidth: 'auto',
+                          padding: '4px 8px',
+                        }}
+                      >
+                        删除自选
+                      </Button>
+                    </Box>
                   </TableCell>
                 </TableRow>
                 <TableRow>
@@ -456,7 +519,7 @@ export const StockTable: React.FC<StockTableProps> = ({ stocks, privacyMode, con
         </DialogActions>
       </Dialog>
 
-      {/* 删除确认对话框 */}
+      {/* 删除交易记录确认对话框 */}
       <Dialog open={!!deletingTransaction} onClose={() => setDeletingTransaction(null)}>
         <DialogTitle>确认删除</DialogTitle>
         <DialogContent>
@@ -466,6 +529,30 @@ export const StockTable: React.FC<StockTableProps> = ({ stocks, privacyMode, con
           <Button onClick={() => setDeletingTransaction(null)}>取消</Button>
           <Button onClick={handleConfirmDelete} variant="contained" color="error">
             删除
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* 删除自选股确认对话框 */}
+      <Dialog open={!!deletingStock} onClose={() => setDeletingStock(null)}>
+        <DialogTitle>确认删除自选股</DialogTitle>
+        <DialogContent>
+          <Typography>
+            确定要删除该自选股吗？此操作将：
+          </Typography>
+          <Typography component="ul" sx={{ mt: 1, pl: 2 }}>
+            <li>删除该股票的所有交易记录</li>
+            <li>退回所有交易记录对应的资金到可用资金</li>
+            <li>从自选列表中移除该股票</li>
+          </Typography>
+          <Typography sx={{ mt: 2, fontWeight: 'bold' }}>
+            此操作不可恢复，确定要继续吗？
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeletingStock(null)}>取消</Button>
+          <Button onClick={handleConfirmDeleteStock} variant="contained" color="error">
+            确认删除
           </Button>
         </DialogActions>
       </Dialog>
