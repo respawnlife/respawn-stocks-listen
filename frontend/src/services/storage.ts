@@ -10,7 +10,6 @@ import {
   loadConfig,
   saveHistoryData as saveHistoryDataToIndexedDB,
   loadHistoryData as loadHistoryDataFromIndexedDB,
-  cleanupOldHistoryData as cleanupOldHistoryDataFromIndexedDB,
 } from './indexedDB';
 
 /**
@@ -24,9 +23,6 @@ function getDefaultConfig(): HoldingsConfig {
  * 初始化配置：从 IndexedDB 加载配置，如果没有则使用默认配置
  */
 export async function initializeConfig(): Promise<HoldingsConfig> {
-  // 初始化时清理一次旧的历史数据
-  await cleanupOldHistoryDataFromIndexedDB(30);
-  
   // 从 IndexedDB 加载配置
   let configData = await loadConfig();
   let config: HoldingsConfig;
@@ -167,13 +163,12 @@ export async function loadHistoryData(date: string): Promise<any> {
 }
 
 /**
- * 保存历史数据（到 IndexedDB）
+ * 保存历史数据（到 IndexedDB，永久保存）
  */
 export async function saveHistoryData(date: string, data: any): Promise<void> {
   try {
     await saveHistoryDataToIndexedDB(date, data);
-    // 保存后清理超过30天的旧数据
-    await cleanupOldHistoryDataFromIndexedDB(30);
+    // 历史数据永久保存，不清理
   } catch (error) {
     console.error('保存历史数据失败:', error);
   }
