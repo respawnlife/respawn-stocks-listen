@@ -1,0 +1,48 @@
+{
+  "privacy_mode": false,
+  "funds": {
+    "available_funds": 4348.13,
+    "total_original_funds": 10000.0
+  },
+  "market_hours": {
+    "A股": {
+      "enabled": true,
+      "morning": {
+        "start": "09:30",
+        "end": "11:30"
+      },
+      "afternoon": {
+        "start": "13:00",
+        "end": "15:00"
+      },
+      "weekdays": [1, 2, 3, 4, 5]
+    },
+    "美股": {
+      "enabled": false,
+      "morning": {
+        "start": "22:30",
+        "end": "05:00"
+      },
+      "afternoon": null,
+      "weekdays": [1, 2, 3, 4, 5]
+    }
+  },
+  "stocks": {
+    "002255": {
+      "transactions": [
+        {
+          "time": "2026-01-10 10:30:00",
+          "quantity": 400,
+          "price": 14.013
+        }
+      ],
+      "alert_up": 15.0,
+      "alert_down": 13.0
+    },
+    "600228": {
+      "transactions": [],
+      "alert_up": null,
+      "alert_down": null
+    }
+  }
+}

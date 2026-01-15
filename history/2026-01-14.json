@@ -1,0 +1,53 @@
+{
+  "date": "2026-01-14",
+  "timestamp": "2026-01-15T00:00:02.135564",
+  "funds": {
+    "available_funds": 4348.13,
+    "total_original_funds": 10000.0,
+    "total_assets": 9756.130000000001,
+    "total_holding_value": 5408.0,
+    "total_profit": -197.20000000000013
+  },
+  "stocks": [
+    {
+      "code": "002255",
+      "name": "海陆重工",
+      "price": 13.52,
+      "change_pct": -0.8797653958944354,
+      "update_time": "00:00:01.130",
+      "holding_price": 14.013,
+      "holding_quantity": 400,
+      "holding_value": 5408.0,
+      "profit": -197.20000000000013,
+      "yesterday_close": 13.64,
+      "kline": {
+        "open": 13.6,
+        "close": 13.52,
+        "high": 14.15,
+        "low": 13.4,
+        "volume": 100905028.0,
+        "amount": 1389431249.0
+      }
+    },
+    {
+      "code": "600228",
+      "name": "*ST返利",
+      "price": 5.42,
+      "change_pct": -0.7326007326007333,
+      "update_time": "00:00:01.520",
+      "holding_price": 0,
+      "holding_quantity": 0,
+      "holding_value": null,
+      "profit": null,
+      "yesterday_close": 5.46,
+      "kline": {
+        "open": 5.41,
+        "close": 5.42,
+        "high": 5.66,
+        "low": 5.31,
+        "volume": 17071400.0,
+        "amount": 94082015.0
+      }
+    }
+  ]
+}
