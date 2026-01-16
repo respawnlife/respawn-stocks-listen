@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Container, CssBaseline, ThemeProvider, createTheme, Alert, Snackbar } from '@mui/material';
+import { Container, CssBaseline, ThemeProvider, createTheme, Alert, Snackbar, Typography } from '@mui/material';
 import { StockTable } from './components/StockTable';
 import { Statistics } from './components/Statistics';
 import { ActionBar } from './components/ActionBar';
