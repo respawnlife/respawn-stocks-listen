@@ -37,6 +37,7 @@ export async function initializeConfig(): Promise<HoldingsConfig> {
     // 从 IndexedDB 加载的配置
     config = {
       privacy_mode: configData.privacy_mode ?? false,
+      update_interval: configData.update_interval ?? 1000, // 默认1秒
       funds: configData.funds || {
         available_funds: 0.0,
         total_original_funds: 0.0,
@@ -50,6 +51,10 @@ export async function initializeConfig(): Promise<HoldingsConfig> {
     // 没有配置，使用默认配置
     console.log('IndexedDB 中没有配置，使用默认配置初始化');
     config = getDefaultConfig();
+    // 确保默认配置有 update_interval
+    if (!config.update_interval) {
+      config.update_interval = 1000;
+    }
     // 保存默认配置到 IndexedDB
     await saveConfig(config);
   }
@@ -103,6 +108,7 @@ export async function loadHoldingsConfig(): Promise<HoldingsConfig> {
   if (configData) {
     config = {
       privacy_mode: configData.privacy_mode ?? false,
+      update_interval: configData.update_interval ?? 1000, // 默认1秒
       funds: configData.funds || {
         available_funds: 0.0,
         total_original_funds: 0.0,

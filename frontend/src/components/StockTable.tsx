@@ -55,6 +55,11 @@ export const StockTable: React.FC<StockTableProps> = ({ stocks, privacyMode, con
   } | null>(null);
   const [deletingStock, setDeletingStock] = useState<string | null>(null);
   const [deleteOption, setDeleteOption] = useState<'refund' | 'keep'>('refund');
+  const [editingAlert, setEditingAlert] = useState<{
+    stockCode: string;
+    alertUp: string;
+    alertDown: string;
+  } | null>(null);
   const [editForm, setEditForm] = useState<{
     time: string;
     quantity: string;
@@ -221,6 +226,54 @@ export const StockTable: React.FC<StockTableProps> = ({ stocks, privacyMode, con
 
   const handleDeleteStock = (stockCode: string) => {
     setDeletingStock(stockCode);
+  };
+
+  const handleSaveAlert = () => {
+    if (!editingAlert) return;
+
+    const { stockCode, alertUp, alertDown } = editingAlert;
+    const alertUpValue = alertUp.trim() === '' ? null : parseFloat(alertUp);
+    const alertDownValue = alertDown.trim() === '' ? null : parseFloat(alertDown);
+
+    // 验证输入
+    if (alertUp !== '' && (isNaN(alertUpValue!) || alertUpValue! <= 0)) {
+      return;
+    }
+    if (alertDown !== '' && (isNaN(alertDownValue!) || alertDownValue! <= 0)) {
+      return;
+    }
+
+    const newConfig = { 
+      ...config,
+      holdings: { ...config.holdings },
+      watchlist: { ...config.watchlist },
+    };
+    
+    // 更新持仓或自选的报警配置
+    if (newConfig.holdings[stockCode]) {
+      // 是持仓，更新持仓的报警配置
+      newConfig.holdings[stockCode] = {
+        ...newConfig.holdings[stockCode],
+        alert_up: alertUpValue,
+        alert_down: alertDownValue,
+      };
+    } else if (newConfig.watchlist[stockCode]) {
+      // 是自选，更新自选的报警配置
+      newConfig.watchlist[stockCode] = {
+        ...newConfig.watchlist[stockCode],
+        alert_up: alertUpValue,
+        alert_down: alertDownValue,
+      };
+    } else {
+      // 既不在持仓也不在自选，添加到自选
+      newConfig.watchlist[stockCode] = {
+        alert_up: alertUpValue,
+        alert_down: alertDownValue,
+      };
+    }
+
+    setEditingAlert(null);
+    onConfigUpdate(newConfig);
   };
 
   const handleConfirmDeleteStock = () => {
@@ -399,7 +452,7 @@ export const StockTable: React.FC<StockTableProps> = ({ stocks, privacyMode, con
                   </TableCell>
                   <TableCell>{formatUpdateTime(stock.last_update_time)}</TableCell>
                   <TableCell>
-                    <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0 }}>
                       <Button
                         size="small"
                         onClick={() => {
@@ -411,11 +464,39 @@ export const StockTable: React.FC<StockTableProps> = ({ stocks, privacyMode, con
                           color: '#1976d2',
                           textTransform: 'none',
                           minWidth: 'auto',
-                          padding: '4px 8px',
+                          padding: '4px 4px',
                         }}
                       >
                         交易
                       </Button>
+                      <Typography component="span" sx={{ color: 'text.secondary', fontSize: '0.875rem', mx: 0 }}>
+                        |
+                      </Typography>
+                      <Button
+                        size="small"
+                        onClick={() => {
+                          const holding = config.holdings[stock.code];
+                          const watchlistItem = config.watchlist[stock.code];
+                          const currentAlertUp = holding?.alert_up ?? watchlistItem?.alert_up ?? null;
+                          const currentAlertDown = holding?.alert_down ?? watchlistItem?.alert_down ?? null;
+                          setEditingAlert({
+                            stockCode: stock.code,
+                            alertUp: currentAlertUp !== null ? currentAlertUp.toString() : '',
+                            alertDown: currentAlertDown !== null ? currentAlertDown.toString() : '',
+                          });
+                        }}
+                        sx={{
+                          color: '#ed6c02',
+                          textTransform: 'none',
+                          minWidth: 'auto',
+                          padding: '4px 4px',
+                        }}
+                      >
+                        报警
+                      </Button>
+                      <Typography component="span" sx={{ color: 'text.secondary', fontSize: '0.875rem', mx: 0 }}>
+                        |
+                      </Typography>
                       <Button
                         size="small"
                         onClick={() => handleDeleteStock(stock.code)}
@@ -423,7 +504,7 @@ export const StockTable: React.FC<StockTableProps> = ({ stocks, privacyMode, con
                           color: 'error.main',
                           textTransform: 'none',
                           minWidth: 'auto',
-                          padding: '4px 8px',
+                          padding: '4px 4px',
                         }}
                       >
                         删除
@@ -601,6 +682,45 @@ export const StockTable: React.FC<StockTableProps> = ({ stocks, privacyMode, con
           <Button size="small" onClick={handleConfirmDelete} variant="contained" color="error">
             删除
           </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* 报警配置对话框 */}
+      <Dialog open={!!editingAlert} onClose={() => setEditingAlert(null)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ pb: 1 }}>报警配置</DialogTitle>
+        <DialogContent sx={{ pt: 1 }}>
+          {editingAlert && (
+            <>
+              <Typography variant="body2" sx={{ mb: 1.5, color: 'text.secondary' }}>
+                股票代码: {editingAlert.stockCode}
+              </Typography>
+              <TextField
+                label="上涨报警价格"
+                type="number"
+                size="small"
+                fullWidth
+                value={editingAlert.alertUp}
+                onChange={(e) => setEditingAlert({ ...editingAlert, alertUp: e.target.value })}
+                placeholder="留空表示不设置"
+                sx={{ mb: 2 }}
+                inputProps={{ step: '0.01', min: '0' }}
+              />
+              <TextField
+                label="下跌报警价格"
+                type="number"
+                size="small"
+                fullWidth
+                value={editingAlert.alertDown}
+                onChange={(e) => setEditingAlert({ ...editingAlert, alertDown: e.target.value })}
+                placeholder="留空表示不设置"
+                inputProps={{ step: '0.01', min: '0' }}
+              />
+            </>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 2, pb: 1.5 }}>
+          <Button size="small" onClick={() => setEditingAlert(null)}>取消</Button>
+          <Button size="small" onClick={handleSaveAlert} variant="contained">保存</Button>
         </DialogActions>
       </Dialog>
 

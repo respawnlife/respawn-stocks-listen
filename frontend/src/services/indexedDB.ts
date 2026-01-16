@@ -568,6 +568,7 @@ export async function saveConfig(config: HoldingsConfig): Promise<void> {
     const configToSave = {
       key: 'main',
       privacy_mode: config.privacy_mode,
+      update_interval: config.update_interval,
       funds: config.funds,
       market_hours: config.market_hours,
       holdings: Object.fromEntries(
@@ -609,6 +610,7 @@ export async function loadConfig(): Promise<Partial<HoldingsConfig> | null> {
         if (result) {
           resolve({
             privacy_mode: result.privacy_mode,
+            update_interval: result.update_interval,
             funds: result.funds,
             market_hours: result.market_hours,
             holdings: result.holdings,

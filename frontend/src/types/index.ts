@@ -29,6 +29,7 @@ export interface HistoricalHolding {
 // 持仓配置
 export interface HoldingsConfig {
   privacy_mode: boolean;
+  update_interval?: number; // 更新频率（毫秒），默认1000ms
   funds: {
     available_funds: number;
     total_original_funds: number;

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Box, Typography, Paper, IconButton, Tooltip } from '@mui/material';
+import { Box, Typography, Paper, IconButton, Tooltip, Select, MenuItem, FormControl } from '@mui/material';
 import { Visibility, VisibilityOff } from '@mui/icons-material';
 import { StockState, HoldingsConfig } from '../types';
 
@@ -12,6 +12,7 @@ interface StatisticsProps {
   privacyMode: boolean;
   onPrivacyModeToggle: () => void;
   config: HoldingsConfig;
+  onConfigUpdate: (newConfig: HoldingsConfig) => Promise<void>;
 }
 
 export const Statistics: React.FC<StatisticsProps> = ({
@@ -20,6 +21,7 @@ export const Statistics: React.FC<StatisticsProps> = ({
   privacyMode,
   onPrivacyModeToggle,
   config,
+  onConfigUpdate,
 }) => {
   const formatPrivacyValue = (value: number): string => {
     return privacyMode ? '***' : value.toFixed(2);
@@ -73,23 +75,52 @@ export const Statistics: React.FC<StatisticsProps> = ({
   const now = new Date();
   const timeStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
 
+  const updateInterval = config.update_interval ?? 1000; // 默认1秒
+
+  const handleUpdateIntervalChange = async (value: number) => {
+    const newConfig = {
+      ...config,
+      update_interval: value,
+    };
+    await onConfigUpdate(newConfig);
+  };
+
   return (
     <Paper sx={{ p: 1.5, mb: 1.5, backgroundColor: '#f5f5f5', position: 'relative' }}>
-      {/* 隐私模式切换按钮 - 右上角 */}
-      <Tooltip title={privacyMode ? '显示敏感信息' : '隐藏敏感信息'}>
-        <IconButton
-          onClick={onPrivacyModeToggle}
-          sx={{
-            position: 'absolute',
-            top: 8,
-            right: 8,
-            color: privacyMode ? 'text.secondary' : 'primary.main',
-          }}
-          size="small"
-        >
-          {privacyMode ? <VisibilityOff /> : <Visibility />}
-        </IconButton>
-      </Tooltip>
+      {/* 右上角控制区 */}
+      <Box sx={{ position: 'absolute', top: 8, right: 8, display: 'flex', alignItems: 'center', gap: 1 }}>
+        {/* 更新频率选择 */}
+        <FormControl size="small" sx={{ minWidth: 80 }}>
+          <Select
+            value={updateInterval}
+            onChange={(e) => handleUpdateIntervalChange(e.target.value as number)}
+            sx={{
+              fontSize: '0.75rem',
+              height: '28px',
+              '& .MuiSelect-select': {
+                py: 0.5,
+              },
+            }}
+          >
+            <MenuItem value={1000}>1s</MenuItem>
+            <MenuItem value={3000}>3s</MenuItem>
+            <MenuItem value={5000}>5s</MenuItem>
+            <MenuItem value={10000}>10s</MenuItem>
+          </Select>
+        </FormControl>
+        {/* 隐私模式切换按钮 */}
+        <Tooltip title={privacyMode ? '显示敏感信息' : '隐藏敏感信息'}>
+          <IconButton
+            onClick={onPrivacyModeToggle}
+            sx={{
+              color: privacyMode ? 'text.secondary' : 'primary.main',
+            }}
+            size="small"
+          >
+            {privacyMode ? <VisibilityOff /> : <Visibility />}
+          </IconButton>
+        </Tooltip>
+      </Box>
 
       <Box sx={{ mb: 0.5 }}>
         <Typography variant="body2" component="span" sx={{ color: 'text.secondary', fontSize: '0.875rem' }}>

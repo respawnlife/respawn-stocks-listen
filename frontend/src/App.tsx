@@ -21,7 +21,7 @@ const theme = createTheme({
   },
 });
 
-const POLL_INTERVAL = 2000; // 2秒更新一次
+// POLL_INTERVAL 现在从 config.update_interval 动态获取，默认1000ms
 
 function App() {
   const [config, setConfig] = useState<HoldingsConfig | null>(null);
@@ -30,6 +30,7 @@ function App() {
   const [alertMessage, setAlertMessage] = useState<string>('');
   const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
   const configRef = useRef<HoldingsConfig | null>(null);
+  const stockStatesRef = useRef<Map<string, StockState>>(new Map()); // 使用 ref 保存最新的 stockStates
   const initializationRef = useRef<boolean>(false); // 使用 ref 跟踪是否正在初始化或已初始化
   
   // 重置所有数据
@@ -65,6 +66,11 @@ function App() {
   useEffect(() => {
     configRef.current = config;
   }, [config]);
+
+  // 保持 stockStatesRef 与 stockStates 同步
+  useEffect(() => {
+    stockStatesRef.current = stockStates;
+  }, [stockStates]);
 
   // 初始化股票状态
   useEffect(() => {
@@ -226,131 +232,136 @@ function App() {
 
   // 主循环：定时更新数据
   useEffect(() => {
-    if (!initialized) return;
+    if (!initialized || !config) return;
 
     let isMounted = true;
+    const pollInterval = config.update_interval ?? 1000; // 默认1秒
 
     const updateData = async () => {
       if (!isMounted) return;
+
+      // 从最新的 stockStates 获取股票代码列表（使用 ref 获取最新值，避免闭包问题）
+      const stockCodes = Array.from(stockStatesRef.current.keys());
+      if (stockCodes.length === 0) return;
+
+      // 使用 ref 获取最新的 config，避免依赖项问题
+      const currentConfig = configRef.current;
+      if (!currentConfig) return;
 
       // 检查是否应该停止更新
       if (shouldStopUpdating()) {
         return;
       }
 
-      // 从最新的 stockStates 获取股票代码列表
-      setStockStates((prev) => {
-        const stockCodes = Array.from(prev.keys());
-        if (stockCodes.length === 0) return prev;
+      // 过滤出在交易时间内的股票
+      const tradingStocks = stockCodes.filter((code) =>
+        isTradingTime(code, currentConfig.market_hours)
+      );
 
-        // 使用 ref 获取最新的 config，避免依赖项问题
-        const currentConfig = configRef.current;
+      if (tradingStocks.length === 0) {
+        return; // 不在交易时间，不更新
+      }
 
-        // 过滤出在交易时间内的股票
-        const tradingStocks = stockCodes.filter((code) =>
-          isTradingTime(code, currentConfig.market_hours)
-        );
+      // 异步获取数据（只调用一次）
+      try {
+        const results = await getMultipleRealtimePrices(tradingStocks);
+        if (!isMounted) return;
 
-        if (tradingStocks.length === 0) {
-          return prev; // 不在交易时间，不更新
-        }
+        setStockStates((current) => {
+          const next = new Map(current);
+          // 获取当前时间作为更新时间（如果API没有返回时间，使用当前时间）
+          const now = new Date();
+          const currentTimeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
+          
+          // 更新所有在交易时间内的股票，无论是否成功获取数据
+          for (const code of tradingStocks) {
+            const state = next.get(code);
+            if (state) {
+              const data = results.get(code);
+              if (data) {
+                // 成功获取数据，使用API返回的时间
+                const changePct =
+                  data.yesterday_close > 0
+                    ? ((data.price - data.yesterday_close) / data.yesterday_close) * 100
+                    : 0.0;
 
-        // 异步获取数据
-        getMultipleRealtimePrices(tradingStocks).then((results) => {
-          if (!isMounted) return;
-
-          setStockStates((current) => {
-            const next = new Map(current);
-            // 获取当前时间作为更新时间（如果API没有返回时间，使用当前时间）
-            const now = new Date();
-            const currentTimeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
-            
-            // 更新所有在交易时间内的股票，无论是否成功获取数据
-            for (const code of tradingStocks) {
-              const state = next.get(code);
-              if (state) {
-                const data = results.get(code);
-                if (data) {
-                  // 成功获取数据，使用API返回的时间
-                  const changePct =
-                    data.yesterday_close > 0
-                      ? ((data.price - data.yesterday_close) / data.yesterday_close) * 100
-                      : 0.0;
-
-                  // 检查报警
-                  const [triggeredUp, triggeredDown] = checkPriceAlert(code, data.price, state);
-                  if (triggeredUp || triggeredDown) {
-                    playAlertSound();
-                    const message = triggeredUp
-                      ? `${data.name}(${code}) 价格上升至 ${data.price.toFixed(2)}，达到报警价格 ${state.alert_up}`
-                      : `${data.name}(${code}) 价格下跌至 ${data.price.toFixed(2)}，达到报警价格 ${state.alert_down}`;
-                    setAlertMessage(message);
-                    showNotification('股票报警', message);
-                  }
-
-                  next.set(code, {
-                    ...state,
-                    name: data.name,
-                    last_price: data.price,
-                    last_time: new Date(),
-                    last_update_time: data.update_time,
-                    last_change_pct: changePct,
-                  });
-                } else {
-                  // 获取数据失败，但拉取已完成，更新时间（使用当前时间）
-                  next.set(code, {
-                    ...state,
-                    last_time: new Date(),
-                    last_update_time: currentTimeStr,
-                  });
+                // 检查报警
+                const [triggeredUp, triggeredDown] = checkPriceAlert(code, data.price, state);
+                if (triggeredUp || triggeredDown) {
+                  playAlertSound();
+                  const message = triggeredUp
+                    ? `${data.name}(${code}) 价格上升至 ${data.price.toFixed(2)}，达到报警价格 ${state.alert_up}`
+                    : `${data.name}(${code}) 价格下跌至 ${data.price.toFixed(2)}，达到报警价格 ${state.alert_down}`;
+                  setAlertMessage(message);
+                  showNotification('股票报警', message);
                 }
+
+                next.set(code, {
+                  ...state,
+                  name: data.name,
+                  last_price: data.price,
+                  last_time: new Date(),
+                  last_update_time: data.update_time,
+                  last_change_pct: changePct,
+                });
+              } else {
+                // 获取数据失败，但拉取已完成，更新时间（使用当前时间）
+                next.set(code, {
+                  ...state,
+                  last_time: new Date(),
+                  last_update_time: currentTimeStr,
+                });
               }
             }
+          }
 
-            // 保存当天数据
-            const today = getTodayDate();
-            const currentConfigForSave = configRef.current;
-            const historyData = {
-              date: today,
-              stocks: Array.from(next.values()).map((state) => ({
-                code: state.code,
-                name: state.name,
-                price: state.last_price,
-                change_pct: state.last_change_pct,
-                holding_price: state.holding_price,
-                holding_quantity: state.holding_quantity,
-                holding_value:
-                  state.last_price !== null && state.holding_quantity > 0
-                    ? state.last_price * state.holding_quantity
-                    : 0,
-                profit:
-                  state.holding_price !== null &&
-                  state.holding_quantity > 0 &&
-                  state.last_price !== null
-                    ? (state.last_price - state.holding_price) * state.holding_quantity
-                    : null,
-              })),
-              funds: currentConfigForSave.funds,
-              timestamp: new Date().toISOString(),
-            };
-            saveHistoryData(today, historyData).catch((error) => {
-              console.error('保存历史数据失败:', error);
-            });
-
-            return next;
+          // 保存当天数据
+          const today = getTodayDate();
+          const currentConfigForSave = configRef.current;
+          const historyData = {
+            date: today,
+            stocks: Array.from(next.values()).map((state) => ({
+              code: state.code,
+              name: state.name,
+              price: state.last_price,
+              change_pct: state.last_change_pct,
+              holding_price: state.holding_price,
+              holding_quantity: state.holding_quantity,
+              holding_value:
+                state.last_price !== null && state.holding_quantity > 0
+                  ? state.last_price * state.holding_quantity
+                  : 0,
+              profit:
+                state.holding_price !== null &&
+                state.holding_quantity > 0 &&
+                state.last_price !== null
+                  ? (state.last_price - state.holding_price) * state.holding_quantity
+                  : null,
+            })),
+            funds: currentConfigForSave.funds,
+            timestamp: new Date().toISOString(),
+          };
+          saveHistoryData(today, historyData).catch((error) => {
+            console.error('保存历史数据失败:', error);
           });
-        });
 
-        return prev;
-      });
+          return next;
+        });
+      } catch (error) {
+        console.error('获取股票数据失败:', error);
+      }
     };
 
-    const interval = setInterval(updateData, POLL_INTERVAL);
+    // 立即执行一次
+    updateData();
+    
+    const interval = setInterval(updateData, pollInterval);
+    
     return () => {
       isMounted = false;
       clearInterval(interval);
     };
-  }, [initialized]);
+  }, [initialized, config?.update_interval]);
 
   // 不再定期检查配置变化，改为在增删改操作时主动保存
 
@@ -371,10 +382,12 @@ function App() {
   };
 
   // 处理配置更新（添加自选股后）
-  const handleConfigUpdate = (newConfig: HoldingsConfig) => {
+  const handleConfigUpdate = async (newConfig: HoldingsConfig) => {
     setConfig(newConfig);
     // 立即更新 configRef，确保后续操作能获取到最新配置
     configRef.current = newConfig;
+    // 保存到 IndexedDB
+    await saveHoldingsConfig(newConfig);
   };
 
   // 更新页面 title
@@ -516,6 +529,7 @@ function App() {
           privacyMode={config.privacy_mode}
           onPrivacyModeToggle={handlePrivacyModeToggle}
           config={config}
+          onConfigUpdate={handleConfigUpdate}
         />
         <ActionBar
           config={config}
