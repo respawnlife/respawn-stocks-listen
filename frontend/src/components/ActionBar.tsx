@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Box, Button, Dialog, DialogTitle, DialogContent, DialogActions, TextField, MenuItem, Select, FormControl, InputLabel, Typography, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, IconButton } from '@mui/material';
+import { Box, Button, Dialog, DialogTitle, DialogContent, DialogActions, TextField, MenuItem, Select, FormControl, InputLabel, Typography, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, IconButton, Chip } from '@mui/material';
 import { Add, ShoppingCart, AccountBalance, History, Edit, Delete } from '@mui/icons-material';
 import { getRealtimePrice } from '../services/stockData';
-import { HoldingsConfig, Transaction, HistoricalHolding } from '../types';
+import { HoldingsConfig, Transaction } from '../types';
 import { saveHoldingsConfig } from '../services/storage';
 import { formatPriceFixed } from '../utils/calculations';
 
@@ -12,9 +12,10 @@ interface ActionBarProps {
   onStockAdded?: (code: string) => void;
   stockStates?: Map<string, { name: string; last_price: number | null }>;
   onOpenTransactionDialog?: (fn: (stockCode?: string) => void) => void;
+  onOpenAllTransactionsDialog?: (fn: (stockCode?: string) => void) => void;
 }
 
-export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, onStockAdded, stockStates, onOpenTransactionDialog }) => {
+export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, onStockAdded, stockStates, onOpenTransactionDialog, onOpenAllTransactionsDialog }) => {
   const [open, setOpen] = useState(false);
   const [stockCode, setStockCode] = useState('');
   const [loading, setLoading] = useState(false);
@@ -41,12 +42,16 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
   // 查看历史交易相关状态
   const [openHistoryDialog, setOpenHistoryDialog] = useState(false);
   const [editingHistoryTransaction, setEditingHistoryTransaction] = useState<{
-    historicalIndex: number;
+    code: string;
+    isHistorical: boolean;
+    historicalIndex?: number;
     transactionIndex: number;
     transaction: Transaction;
   } | null>(null);
   const [deletingHistoryTransaction, setDeletingHistoryTransaction] = useState<{
-    historicalIndex: number;
+    code: string;
+    isHistorical: boolean;
+    historicalIndex?: number;
     transactionIndex: number;
   } | null>(null);
   const [historyEditForm, setHistoryEditForm] = useState<{
@@ -54,6 +59,14 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
     quantity: string;
     price: string;
   }>({ time: '', quantity: '', price: '' });
+  
+  // 筛选相关状态
+  const [filterStockCode, setFilterStockCode] = useState<string>('');
+  const [filterStockCodeInput, setFilterStockCodeInput] = useState<string>('');
+  const [filterTimeStart, setFilterTimeStart] = useState<string>('');
+  const [filterTimeEnd, setFilterTimeEnd] = useState<string>('');
+  const [filterAmountOperator, setFilterAmountOperator] = useState<'gt' | 'eq' | 'lt'>('gt');
+  const [filterAmountValue, setFilterAmountValue] = useState<string>('');
 
   const handleOpen = () => {
     setOpen(true);
@@ -184,6 +197,30 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
     };
   }, [handleOpenTransaction, onOpenTransactionDialog]);
 
+  // 处理打开"查看所有交易"对话框（支持筛选）
+  const handleOpenAllTransactionsDialog = useCallback((filterStockCode?: string) => {
+    setOpenHistoryDialog(true);
+    if (filterStockCode) {
+      setFilterStockCode(filterStockCode);
+      setFilterStockCodeInput('');
+    } else {
+      setFilterStockCode('');
+      setFilterStockCodeInput('');
+    }
+    // 重置其他筛选条件
+    setFilterTimeStart('');
+    setFilterTimeEnd('');
+    setFilterAmountOperator('gt');
+    setFilterAmountValue('');
+  }, []);
+
+  // 暴露打开"查看所有交易"对话框的方法给父组件
+  useEffect(() => {
+    if (onOpenAllTransactionsDialog) {
+      onOpenAllTransactionsDialog(handleOpenAllTransactionsDialog);
+    }
+  }, [handleOpenAllTransactionsDialog, onOpenAllTransactionsDialog]);
+
   // 处理关闭交易对话框
   const handleCloseTransaction = () => {
     setOpenTransaction(false);
@@ -196,6 +233,17 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
     setTransactionStockValidated(false);
     setTransactionCurrentPrice(null);
     setTransactionPriceInitialized(false);
+  };
+
+  // 处理关闭"查看所有交易"对话框
+  const handleCloseHistoryDialog = () => {
+    setOpenHistoryDialog(false);
+    setFilterStockCode('');
+    setFilterStockCodeInput('');
+    setFilterTimeStart('');
+    setFilterTimeEnd('');
+    setFilterAmountOperator('gt');
+    setFilterAmountValue('');
   };
 
   // 验证交易股票代码
@@ -436,9 +484,8 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
             variant="outlined"
             startIcon={<History />}
             onClick={() => setOpenHistoryDialog(true)}
-            disabled={!config.historical_holdings || config.historical_holdings.length === 0}
           >
-            查看历史交易
+            查看所有交易
           </Button>
         </Box>
         <Box sx={{ display: 'flex', gap: 1 }}>
@@ -697,47 +744,256 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
         </DialogActions>
       </Dialog>
 
-      {/* 查看历史交易对话框 */}
-      <Dialog open={openHistoryDialog} onClose={() => setOpenHistoryDialog(false)} maxWidth="lg" fullWidth>
-        <DialogTitle>历史交易记录</DialogTitle>
+      {/* 查看所有交易对话框 */}
+      <Dialog open={openHistoryDialog} onClose={handleCloseHistoryDialog} maxWidth="lg" fullWidth>
+        <DialogTitle>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Typography variant="h6">所有交易记录</Typography>
+            <Button
+              variant="contained"
+              startIcon={<Add />}
+              onClick={() => {
+                setOpenHistoryDialog(false);
+                handleOpenTransaction();
+              }}
+              size="small"
+            >
+              增加交易
+            </Button>
+          </Box>
+        </DialogTitle>
         <DialogContent>
-          {config.historical_holdings && config.historical_holdings.length > 0 ? (
-            <TableContainer component={Paper} sx={{ mt: 2 }}>
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell>股票代码</TableCell>
-                    <TableCell>股票名称</TableCell>
-                    <TableCell>交易时间</TableCell>
-                    <TableCell>数量（股）</TableCell>
-                    <TableCell>单价</TableCell>
-                    <TableCell>总金额</TableCell>
-                    <TableCell align="right">操作</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {config.historical_holdings.map((historical, historicalIndex) =>
-                    historical.transactions.map((transaction, transactionIndex) => (
-                      <TableRow key={`${historicalIndex}-${transactionIndex}`}>
-                        <TableCell>{historical.code}</TableCell>
-                        <TableCell>{historical.name}</TableCell>
-                        <TableCell>{transaction.time}</TableCell>
-                        <TableCell>{Math.floor(transaction.quantity).toLocaleString()}</TableCell>
-                        <TableCell>{formatPriceFixed(transaction.price)}</TableCell>
-                        <TableCell>{(transaction.quantity * transaction.price).toFixed(2)}</TableCell>
+          {/* 筛选区域 */}
+          <Box sx={{ mt: 2, mb: 2, p: 2, border: '1px solid #e0e0e0', borderRadius: 1 }}>
+            <Typography variant="subtitle2" sx={{ mb: 2 }}>筛选条件</Typography>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              {/* 股票筛选 */}
+              <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+                <FormControl sx={{ minWidth: 200 }}>
+                  <InputLabel>股票代码</InputLabel>
+                  <Select
+                    value={filterStockCode}
+                    label="股票代码"
+                    onChange={(e) => {
+                      setFilterStockCode(e.target.value);
+                      setFilterStockCodeInput('');
+                    }}
+                  >
+                    <MenuItem value="">全部</MenuItem>
+                    {getAllStockCodes().map((code) => (
+                      <MenuItem key={code} value={code}>
+                        {code} {stockStates?.get(code)?.name ? `(${stockStates.get(code)?.name})` : ''}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                <Typography>或</Typography>
+                <TextField
+                  label="输入股票代码"
+                  value={filterStockCodeInput}
+                  onChange={(e) => {
+                    setFilterStockCodeInput(e.target.value.toUpperCase());
+                    setFilterStockCode('');
+                  }}
+                  placeholder="例如：600228"
+                  sx={{ flex: 1 }}
+                />
+              </Box>
+              
+              {/* 交易时间筛选 */}
+              <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+                <TextField
+                  label="开始时间"
+                  type="datetime-local"
+                  value={filterTimeStart}
+                  onChange={(e) => setFilterTimeStart(e.target.value)}
+                  InputLabelProps={{ shrink: true }}
+                  sx={{ flex: 1 }}
+                />
+                <Typography>至</Typography>
+                <TextField
+                  label="结束时间"
+                  type="datetime-local"
+                  value={filterTimeEnd}
+                  onChange={(e) => setFilterTimeEnd(e.target.value)}
+                  InputLabelProps={{ shrink: true }}
+                  sx={{ flex: 1 }}
+                />
+              </Box>
+              
+              {/* 总金额筛选 */}
+              <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+                <FormControl sx={{ minWidth: 120 }}>
+                  <InputLabel>金额条件</InputLabel>
+                  <Select
+                    value={filterAmountOperator}
+                    label="金额条件"
+                    onChange={(e) => setFilterAmountOperator(e.target.value as 'gt' | 'eq' | 'lt')}
+                  >
+                    <MenuItem value="gt">大于</MenuItem>
+                    <MenuItem value="eq">等于</MenuItem>
+                    <MenuItem value="lt">小于</MenuItem>
+                  </Select>
+                </FormControl>
+                <TextField
+                  label="金额"
+                  type="number"
+                  value={filterAmountValue}
+                  onChange={(e) => setFilterAmountValue(e.target.value)}
+                  placeholder="输入金额"
+                  sx={{ flex: 1 }}
+                />
+                <Button
+                  variant="outlined"
+                  onClick={() => {
+                    setFilterStockCode('');
+                    setFilterStockCodeInput('');
+                    setFilterTimeStart('');
+                    setFilterTimeEnd('');
+                    setFilterAmountOperator('gt');
+                    setFilterAmountValue('');
+                  }}
+                >
+                  清除筛选
+                </Button>
+              </Box>
+            </Box>
+          </Box>
+          {(() => {
+            // 收集所有交易记录
+            const allTransactions: Array<{
+              code: string;
+              name: string;
+              transaction: Transaction;
+              isHistorical: boolean;
+              historicalIndex?: number;
+              transactionIndex: number;
+            }> = [];
+
+            // 添加当前持仓中的交易
+            Object.entries(config.holdings || {}).forEach(([code, holding]) => {
+              const transactions = Array.isArray(holding.transactions) ? holding.transactions : [];
+              const stockName = stockStates?.get(code)?.name || code;
+              transactions.forEach((transaction, index) => {
+                allTransactions.push({
+                  code,
+                  name: stockName,
+                  transaction,
+                  isHistorical: false,
+                  transactionIndex: index,
+                });
+              });
+            });
+
+            // 添加历史持仓中的交易
+            if (config.historical_holdings && Array.isArray(config.historical_holdings)) {
+              config.historical_holdings.forEach((historical, historicalIndex) => {
+                const transactions = Array.isArray(historical.transactions) ? historical.transactions : [];
+                transactions.forEach((transaction, transactionIndex) => {
+                  allTransactions.push({
+                    code: historical.code,
+                    name: historical.name || historical.code,
+                    transaction,
+                    isHistorical: true,
+                    historicalIndex,
+                    transactionIndex,
+                  });
+                });
+              });
+            }
+
+            // 应用筛选
+            let filteredTransactions = allTransactions;
+            
+            // 股票筛选
+            const filterCode = filterStockCode || filterStockCodeInput.trim().toUpperCase();
+            if (filterCode) {
+              filteredTransactions = filteredTransactions.filter(item => item.code === filterCode);
+            }
+            
+            // 时间筛选
+            if (filterTimeStart) {
+              const startTime = new Date(filterTimeStart).getTime();
+              filteredTransactions = filteredTransactions.filter(item => {
+                const itemTime = new Date(item.transaction.time).getTime();
+                return itemTime >= startTime;
+              });
+            }
+            if (filterTimeEnd) {
+              const endTime = new Date(filterTimeEnd).getTime();
+              filteredTransactions = filteredTransactions.filter(item => {
+                const itemTime = new Date(item.transaction.time).getTime();
+                return itemTime <= endTime;
+              });
+            }
+            
+            // 金额筛选
+            if (filterAmountValue) {
+              const amountValue = parseFloat(filterAmountValue);
+              if (!isNaN(amountValue)) {
+                filteredTransactions = filteredTransactions.filter(item => {
+                  const itemAmount = item.transaction.quantity * item.transaction.price;
+                  if (filterAmountOperator === 'gt') return itemAmount > amountValue;
+                  if (filterAmountOperator === 'eq') return Math.abs(itemAmount - amountValue) < 0.01;
+                  if (filterAmountOperator === 'lt') return itemAmount < amountValue;
+                  return true;
+                });
+              }
+            }
+
+            // 按时间排序（最新的在前）
+            filteredTransactions.sort((a, b) => {
+              const timeA = new Date(a.transaction.time).getTime();
+              const timeB = new Date(b.transaction.time).getTime();
+              return timeB - timeA;
+            });
+
+            return filteredTransactions.length > 0 ? (
+              <TableContainer component={Paper} sx={{ mt: 2 }}>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>股票代码</TableCell>
+                      <TableCell>股票名称</TableCell>
+                      <TableCell>状态</TableCell>
+                      <TableCell>交易时间</TableCell>
+                      <TableCell>数量（股）</TableCell>
+                      <TableCell>单价</TableCell>
+                      <TableCell>总金额</TableCell>
+                      <TableCell align="right">操作</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {filteredTransactions.map((item, index) => (
+                      <TableRow key={`${item.isHistorical ? 'historical' : 'current'}-${item.code}-${item.transactionIndex}-${index}`}>
+                        <TableCell>{item.code}</TableCell>
+                        <TableCell>{item.name}</TableCell>
+                        <TableCell>
+                          {item.isHistorical ? (
+                            <Chip label="已删除自选" size="small" color="default" />
+                          ) : (
+                            <Chip label="当前持仓" size="small" color="primary" />
+                          )}
+                        </TableCell>
+                        <TableCell>{item.transaction.time}</TableCell>
+                        <TableCell>{Math.floor(item.transaction.quantity).toLocaleString()}</TableCell>
+                        <TableCell>{formatPriceFixed(item.transaction.price)}</TableCell>
+                        <TableCell>{(item.transaction.quantity * item.transaction.price).toFixed(2)}</TableCell>
                         <TableCell align="right">
                           <IconButton
                             size="small"
                             onClick={() => {
                               setEditingHistoryTransaction({
-                                historicalIndex,
-                                transactionIndex,
-                                transaction,
+                                code: item.code,
+                                isHistorical: item.isHistorical,
+                                historicalIndex: item.historicalIndex,
+                                transactionIndex: item.transactionIndex,
+                                transaction: item.transaction,
                               });
                               setHistoryEditForm({
-                                time: transaction.time,
-                                quantity: transaction.quantity.toString(),
-                                price: transaction.price.toString(),
+                                time: item.transaction.time,
+                                quantity: item.transaction.quantity.toString(),
+                                price: item.transaction.price.toString(),
                               });
                             }}
                             sx={{ color: '#1976d2' }}
@@ -746,32 +1002,37 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
                           </IconButton>
                           <IconButton
                             size="small"
-                            onClick={() => setDeletingHistoryTransaction({ historicalIndex, transactionIndex })}
+                            onClick={() => setDeletingHistoryTransaction({ 
+                              code: item.code,
+                              isHistorical: item.isHistorical,
+                              historicalIndex: item.historicalIndex, 
+                              transactionIndex: item.transactionIndex 
+                            })}
                             sx={{ color: 'error.main' }}
                           >
                             <Delete fontSize="small" />
                           </IconButton>
                         </TableCell>
                       </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          ) : (
-            <Typography sx={{ mt: 2, textAlign: 'center', color: 'text.secondary' }}>
-              暂无历史交易记录
-            </Typography>
-          )}
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            ) : (
+              <Typography sx={{ mt: 2, textAlign: 'center', color: 'text.secondary' }}>
+                {allTransactions.length > 0 ? '没有符合条件的交易记录' : '暂无交易记录'}
+              </Typography>
+            );
+          })()}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setOpenHistoryDialog(false)}>关闭</Button>
+          <Button onClick={handleCloseHistoryDialog}>关闭</Button>
         </DialogActions>
       </Dialog>
 
-      {/* 编辑历史交易对话框 */}
+      {/* 编辑交易对话框 */}
       <Dialog open={!!editingHistoryTransaction} onClose={() => setEditingHistoryTransaction(null)} maxWidth="sm" fullWidth>
-        <DialogTitle>编辑历史交易记录</DialogTitle>
+        <DialogTitle>编辑交易记录</DialogTitle>
         <DialogContent>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
             <TextField
@@ -832,7 +1093,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
           <Button
             onClick={() => {
               if (!editingHistoryTransaction) return;
-              const { historicalIndex, transactionIndex } = editingHistoryTransaction;
+              const { code, isHistorical, historicalIndex, transactionIndex } = editingHistoryTransaction;
               const quantity = parseFloat(historyEditForm.quantity);
               const price = parseFloat(historyEditForm.price);
 
@@ -840,23 +1101,64 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
                 return;
               }
 
-              const newHistoricalHoldings = [...(config.historical_holdings || [])];
-              newHistoricalHoldings[historicalIndex].transactions[transactionIndex] = {
+              const newTransaction: Transaction = {
                 time: historyEditForm.time,
                 quantity: quantity,
                 price: price,
               };
 
-              const newConfig = {
-                ...config,
-                historical_holdings: newHistoricalHoldings,
-              };
+              if (isHistorical) {
+                // 编辑历史交易
+                const newHistoricalHoldings = [...(config.historical_holdings || [])];
+                if (historicalIndex !== undefined && newHistoricalHoldings[historicalIndex]) {
+                  newHistoricalHoldings[historicalIndex].transactions[transactionIndex] = newTransaction;
+                  const newConfig = {
+                    ...config,
+                    historical_holdings: newHistoricalHoldings,
+                  };
+                  saveHoldingsConfig(newConfig).then(() => {
+                    onConfigUpdate(newConfig);
+                    setEditingHistoryTransaction(null);
+                    setHistoryEditForm({ time: '', quantity: '', price: '' });
+                  });
+                }
+              } else {
+                // 编辑当前持仓的交易
+                const holding = config.holdings[code];
+                if (holding) {
+                  const oldTransaction = holding.transactions[transactionIndex];
+                  // 计算修改前后的金额差额
+                  const oldAmount = oldTransaction.quantity * oldTransaction.price;
+                  const newAmount = quantity * price;
+                  const amountDiff = oldAmount - newAmount;
 
-              saveHoldingsConfig(newConfig).then(() => {
-                onConfigUpdate(newConfig);
-                setEditingHistoryTransaction(null);
-                setHistoryEditForm({ time: '', quantity: '', price: '' });
-              });
+                  const newTransactions = [...holding.transactions];
+                  newTransactions[transactionIndex] = newTransaction;
+
+                  const newAvailableFunds = config.funds.available_funds + amountDiff;
+
+                  const newConfig = {
+                    ...config,
+                    funds: {
+                      ...config.funds,
+                      available_funds: Math.max(0, newAvailableFunds),
+                    },
+                    holdings: {
+                      ...config.holdings,
+                      [code]: {
+                        ...holding,
+                        transactions: newTransactions,
+                      },
+                    },
+                  };
+
+                  saveHoldingsConfig(newConfig).then(() => {
+                    onConfigUpdate(newConfig);
+                    setEditingHistoryTransaction(null);
+                    setHistoryEditForm({ time: '', quantity: '', price: '' });
+                  });
+                }
+              }
             }}
             variant="contained"
           >
@@ -869,33 +1171,70 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
       <Dialog open={!!deletingHistoryTransaction} onClose={() => setDeletingHistoryTransaction(null)}>
         <DialogTitle>确认删除</DialogTitle>
         <DialogContent>
-          <Typography>确定要删除这条历史交易记录吗？此操作不可恢复。</Typography>
+          <Typography>确定要删除这条交易记录吗？此操作不可恢复。</Typography>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setDeletingHistoryTransaction(null)}>取消</Button>
           <Button
             onClick={() => {
               if (!deletingHistoryTransaction) return;
-              const { historicalIndex, transactionIndex } = deletingHistoryTransaction;
-              const newHistoricalHoldings = [...(config.historical_holdings || [])];
+              const { code, isHistorical, historicalIndex, transactionIndex } = deletingHistoryTransaction;
               
-              // 删除交易记录
-              newHistoricalHoldings[historicalIndex].transactions.splice(transactionIndex, 1);
-              
-              // 如果该历史持仓没有交易记录了，删除整个历史持仓
-              if (newHistoricalHoldings[historicalIndex].transactions.length === 0) {
-                newHistoricalHoldings.splice(historicalIndex, 1);
+              if (isHistorical) {
+                // 删除历史交易
+                const newHistoricalHoldings = [...(config.historical_holdings || [])];
+                if (historicalIndex !== undefined && newHistoricalHoldings[historicalIndex]) {
+                  newHistoricalHoldings[historicalIndex].transactions.splice(transactionIndex, 1);
+                  
+                  // 如果该历史持仓没有交易记录了，删除整个历史持仓
+                  if (newHistoricalHoldings[historicalIndex].transactions.length === 0) {
+                    newHistoricalHoldings.splice(historicalIndex, 1);
+                  }
+
+                  const newConfig = {
+                    ...config,
+                    historical_holdings: newHistoricalHoldings.length > 0 ? newHistoricalHoldings : undefined,
+                  };
+
+                  saveHoldingsConfig(newConfig).then(() => {
+                    onConfigUpdate(newConfig);
+                    setDeletingHistoryTransaction(null);
+                  });
+                }
+              } else {
+                // 删除当前持仓的交易
+                const holding = config.holdings[code];
+                if (holding) {
+                  const transaction = holding.transactions[transactionIndex];
+                  const transactionAmount = transaction.quantity * transaction.price;
+
+                  const newTransactions = [...holding.transactions];
+                  newTransactions.splice(transactionIndex, 1);
+
+                  // 删除交易时，退回资金（增加可用资金）
+                  const newAvailableFunds = config.funds.available_funds + transactionAmount;
+
+                  const newConfig = {
+                    ...config,
+                    funds: {
+                      ...config.funds,
+                      available_funds: newAvailableFunds,
+                    },
+                    holdings: {
+                      ...config.holdings,
+                      [code]: {
+                        ...holding,
+                        transactions: newTransactions,
+                      },
+                    },
+                  };
+
+                  saveHoldingsConfig(newConfig).then(() => {
+                    onConfigUpdate(newConfig);
+                    setDeletingHistoryTransaction(null);
+                  });
+                }
               }
-
-              const newConfig = {
-                ...config,
-                historical_holdings: newHistoricalHoldings.length > 0 ? newHistoricalHoldings : undefined,
-              };
-
-              saveHoldingsConfig(newConfig).then(() => {
-                onConfigUpdate(newConfig);
-                setDeletingHistoryTransaction(null);
-              });
             }}
             variant="contained"
             color="error"

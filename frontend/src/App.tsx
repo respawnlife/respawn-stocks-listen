@@ -319,6 +319,8 @@ function App() {
 
   // 打开交易对话框的引用
   const openTransactionDialogRef = useRef<((stockCode?: string) => void) | null>(null);
+  // 打开"查看所有交易"对话框的引用
+  const openAllTransactionsDialogRef = useRef<((stockCode?: string) => void) | null>(null);
 
   // 处理股票添加后的回调（立即获取数据）
   const handleStockAdded = async (code: string) => {
@@ -408,6 +410,9 @@ function App() {
           onOpenTransactionDialog={(fn) => {
             openTransactionDialogRef.current = fn;
           }}
+          onOpenAllTransactionsDialog={(fn) => {
+            openAllTransactionsDialogRef.current = fn;
+          }}
         />
         <StockTable
           stocks={stocksArray}
@@ -417,6 +422,11 @@ function App() {
           onAddTransaction={(code) => {
             if (openTransactionDialogRef.current) {
               openTransactionDialogRef.current(code);
+            }
+          }}
+          onOpenAllTransactionsDialog={(code) => {
+            if (openAllTransactionsDialogRef.current) {
+              openAllTransactionsDialogRef.current(code);
             }
           }}
         />

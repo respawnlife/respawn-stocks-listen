@@ -39,9 +39,10 @@ interface StockTableProps {
   config: HoldingsConfig;
   onConfigUpdate: (newConfig: HoldingsConfig) => void;
   onAddTransaction?: (stockCode: string) => void;
+  onOpenAllTransactionsDialog?: (stockCode?: string) => void;
 }
 
-export const StockTable: React.FC<StockTableProps> = ({ stocks, privacyMode, config, onConfigUpdate, onAddTransaction }) => {
+export const StockTable: React.FC<StockTableProps> = ({ stocks, privacyMode, config, onConfigUpdate, onAddTransaction, onOpenAllTransactionsDialog }) => {
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [editingTransaction, setEditingTransaction] = useState<{
     stockCode: string;
@@ -374,7 +375,11 @@ export const StockTable: React.FC<StockTableProps> = ({ stocks, privacyMode, con
                     <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
                       <Button
                         size="small"
-                        onClick={() => toggleRow(stock.code)}
+                        onClick={() => {
+                          if (onOpenAllTransactionsDialog) {
+                            onOpenAllTransactionsDialog(stock.code);
+                          }
+                        }}
                         sx={{
                           color: '#1976d2',
                           textTransform: 'none',
@@ -394,7 +399,7 @@ export const StockTable: React.FC<StockTableProps> = ({ stocks, privacyMode, con
                           padding: '4px 8px',
                         }}
                       >
-                        删除自选
+                        删除
                       </Button>
                     </Box>
                   </TableCell>
