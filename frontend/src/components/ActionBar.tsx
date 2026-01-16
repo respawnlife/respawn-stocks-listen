@@ -146,15 +146,18 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
   // 处理打开交易对话框
   const handleOpenTransaction = useCallback((presetStockCode?: string) => {
     setOpenTransaction(true);
+    setTransactionPriceInitialized(false); // 重置初始化标志
     if (presetStockCode) {
       // 如果预设了股票代码，直接设置为已验证状态
       setTransactionStockCode(presetStockCode);
       setTransactionStockCodeInput('');
       setTransactionStockValidated(true);
-      // 设置当前价格
+      // 设置当前价格（用于显示）
       const price = stockStates?.get(presetStockCode)?.last_price || null;
       setTransactionCurrentPrice(price);
+      // 只在初始化时设置输入框价格
       setTransactionPrice(price ? price.toFixed(3) : '');
+      setTransactionPriceInitialized(true);
     } else {
       setTransactionStockCode('');
       setTransactionStockCodeInput('');
@@ -212,7 +215,11 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
       if (transactionStockCode && getAllStockCodes().includes(transactionStockCode)) {
         const price = stockStates?.get(transactionStockCode)?.last_price || null;
         setTransactionCurrentPrice(price);
-        setTransactionPrice(price ? price.toFixed(3) : '');
+        // 只在初始化时设置输入框价格
+        if (!transactionPriceInitialized) {
+          setTransactionPrice(price ? price.toFixed(3) : '');
+          setTransactionPriceInitialized(true);
+        }
         setTransactionStockValidated(true);
         setTransactionLoading(false);
         return;
@@ -344,17 +351,21 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
     });
   };
 
-  // 当选择已有股票时，自动设置价格
+  // 当股价变化时，只更新显示用的当前价格，不更新输入框
   useEffect(() => {
-    if (transactionStockCode && stockStates?.has(transactionStockCode)) {
+    if (transactionStockCode && stockStates?.has(transactionStockCode) && openTransaction) {
       const price = stockStates.get(transactionStockCode)?.last_price;
       if (price !== null && price !== undefined) {
+        // 只更新显示用的当前价格，不更新输入框
         setTransactionCurrentPrice(price);
-        setTransactionPrice(price.toFixed(3));
-        setTransactionStockValidated(true);
+        // 如果价格还没有初始化，才设置输入框（这种情况应该很少，因为 handleOpenTransaction 已经设置了）
+        if (!transactionPriceInitialized) {
+          setTransactionPrice(price.toFixed(3));
+          setTransactionPriceInitialized(true);
+        }
       }
     }
-  }, [transactionStockCode, stockStates]);
+  }, [transactionStockCode, stockStates, openTransaction, transactionPriceInitialized]);
 
   // 处理打开增减本金对话框
   const handleOpenFundsDialog = () => {
