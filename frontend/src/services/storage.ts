@@ -54,12 +54,14 @@ export async function initializeConfig(): Promise<HoldingsConfig> {
 
   // 合并交易数据到 holdings
   for (const [code, transactions] of Object.entries(holdingsTransactions)) {
+    // 确保 transactions 是数组
+    const validTransactions = Array.isArray(transactions) ? transactions : [];
     if (config.holdings[code]) {
-      config.holdings[code].transactions = transactions;
+      config.holdings[code].transactions = validTransactions;
     } else {
       // 如果配置中没有该持仓，但 IndexedDB 中有交易记录，创建持仓
       config.holdings[code] = {
-        transactions: transactions,
+        transactions: validTransactions,
         alert_up: null,
         alert_down: null,
       };
@@ -103,12 +105,14 @@ export async function loadHoldingsConfig(): Promise<HoldingsConfig> {
 
   // 合并交易数据到 holdings
   for (const [code, transactions] of Object.entries(holdingsTransactions)) {
+    // 确保 transactions 是数组
+    const validTransactions = Array.isArray(transactions) ? transactions : [];
     if (config.holdings[code]) {
-      config.holdings[code].transactions = transactions;
+      config.holdings[code].transactions = validTransactions;
     } else {
       // 如果配置中没有该持仓，但 IndexedDB 中有交易记录，创建持仓
       config.holdings[code] = {
-        transactions: transactions,
+        transactions: validTransactions,
         alert_up: null,
         alert_down: null,
       };
