@@ -377,6 +377,64 @@ function App() {
     configRef.current = newConfig;
   };
 
+  // 更新页面 title
+  useEffect(() => {
+    if (!config) {
+      document.title = '--';
+      return;
+    }
+
+    // 将 stockStates 转换为数组用于计算
+    const stocksForCalc = Array.from(stockStates.values());
+
+    // 计算总持仓市值
+    const totalHoldingValue = stocksForCalc.reduce((sum, stock) => {
+      if (stock.last_price !== null && stock.holding_quantity > 0) {
+        return sum + stock.last_price * stock.holding_quantity;
+      }
+      return sum;
+    }, 0);
+
+    // 计算历史交易占用的资金
+    const historicalFundsUsed = (config.historical_holdings || []).reduce((sum, historical) => {
+      return sum + historical.transactions.reduce(
+        (transactionSum, transaction) => transactionSum + transaction.quantity * transaction.price,
+        0
+      );
+    }, 0);
+
+    // 计算实时市值
+    const totalAssets = config.funds.available_funds + totalHoldingValue + historicalFundsUsed;
+
+    // 计算持仓股票数量
+    const holdingStockCount = stocksForCalc.filter(
+      (stock) => stock.holding_price !== null && stock.holding_quantity > 0
+    ).length;
+
+    // 计算总盈亏
+    const totalProfit = totalAssets - config.funds.total_original_funds;
+    const totalProfitPct =
+      config.funds.total_original_funds > 0
+        ? (totalProfit / config.funds.total_original_funds) * 100
+        : 0;
+
+    // 计算整体涨跌幅（加权平均）
+    const totalChangePct =
+      stocksForCalc.length > 0
+        ? stocksForCalc.reduce((sum, stock) => sum + stock.last_change_pct, 0) / stocksForCalc.length
+        : 0;
+
+    if (holdingStockCount > 0) {
+      // 有持仓，显示盈亏：123.40(2.12%)
+      const sign = totalProfit >= 0 ? '+' : '';
+      document.title = `${sign}${totalProfit.toFixed(2)}(${totalProfitPct >= 0 ? '+' : ''}${totalProfitPct.toFixed(2)}%)`;
+    } else {
+      // 没有持仓，显示涨跌幅：2.12%
+      const sign = totalChangePct >= 0 ? '+' : '';
+      document.title = `${sign}${totalChangePct.toFixed(2)}%`;
+    }
+  }, [config, stockStates]);
+
   // 打开交易对话框的引用
   const openTransactionDialogRef = useRef<((stockCode?: string) => void) | null>(null);
   // 打开"查看所有交易"对话框的引用
