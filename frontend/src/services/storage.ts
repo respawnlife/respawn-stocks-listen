@@ -13,6 +13,9 @@ import {
   loadAllWatchlistItems,
   saveWatchlistItem,
   deleteWatchlistItem,
+  clearAllData,
+  addTransaction,
+  loadHoldingsTransactions,
 } from './indexedDB';
 
 /**
@@ -56,7 +59,7 @@ export async function initializeConfig(): Promise<HoldingsConfig> {
   
   // 从 IndexedDB 加载交易数据
   const holdingsTransactions = await loadAllHoldingsTransactions();
-  const historicalHoldings = await loadHistoricalHoldings();
+  // 不再从 historical_holdings 表加载，因为历史持仓现在通过 watchlist 和 transactions 表管理
 
   // 重建 holdings 和 watchlist
   config.holdings = {};
@@ -83,8 +86,8 @@ export async function initializeConfig(): Promise<HoldingsConfig> {
     }
   }
 
-  // 合并历史持仓（兼容旧数据）
-  config.historical_holdings = historicalHoldings;
+  // 历史持仓现在通过 watchlist 和 transactions 表管理，不再需要单独的 historical_holdings 数组
+  config.historical_holdings = [];
 
   return config;
 }
@@ -119,7 +122,7 @@ export async function loadHoldingsConfig(): Promise<HoldingsConfig> {
   
   // 从 IndexedDB 加载交易数据
   const holdingsTransactions = await loadAllHoldingsTransactions();
-  const historicalHoldings = await loadHistoricalHoldings();
+  // 不再从 historical_holdings 表加载，因为历史持仓现在通过 watchlist 和 transactions 表管理
 
   // 重建 holdings 和 watchlist
   config.holdings = {};
@@ -146,8 +149,8 @@ export async function loadHoldingsConfig(): Promise<HoldingsConfig> {
     }
   }
 
-  // 合并历史持仓（兼容旧数据）
-  config.historical_holdings = historicalHoldings;
+  // 历史持仓现在通过 watchlist 和 transactions 表管理，不再需要单独的 historical_holdings 数组
+  config.historical_holdings = [];
 
   return config;
 }
@@ -180,7 +183,22 @@ export async function saveHoldingsConfig(config: HoldingsConfig): Promise<void> 
         
         // 保存交易记录
         if (holding.transactions && holding.transactions.length > 0) {
-          await saveHoldingsTransactions(code, holding.transactions);
+          // 检查交易记录是否有 ID，如果没有，说明可能是从 config 中加载的，需要从 IndexedDB 重新加载
+          const hasAllIds = holding.transactions.every(t => t.id !== undefined);
+          if (!hasAllIds) {
+            // 从 IndexedDB 重新加载交易记录以确保有 ID
+            const dbTransactions = await loadHoldingsTransactions(code);
+            if (dbTransactions.length === holding.transactions.length) {
+              // 数量匹配，使用数据库中的交易记录（有 ID）
+              await saveHoldingsTransactions(code, dbTransactions);
+            } else {
+              // 数量不匹配，使用传入的交易记录（可能是新增或修改的）
+              await saveHoldingsTransactions(code, holding.transactions);
+            }
+          } else {
+            // 所有交易都有 ID，直接保存
+            await saveHoldingsTransactions(code, holding.transactions);
+          }
         } else {
           await deleteHoldingsTransactions(code);
         }
@@ -210,12 +228,9 @@ export async function saveHoldingsConfig(config: HoldingsConfig): Promise<void> 
       }
     }
 
-    // 3. 保存历史持仓到 IndexedDB（兼容旧数据）
-    if (config.historical_holdings && config.historical_holdings.length > 0) {
-      await saveHistoricalHoldings(config.historical_holdings);
-    } else {
-      await saveHistoricalHoldings([]);
-    }
+    // 3. 历史持仓现在通过 watchlist 和 transactions 表管理，不需要单独保存
+    // 当删除股票但选择不退回交易时，交易记录保留在 transactions 表中，股票保留在 watchlist 表中
+    // 这样在加载时，有交易记录但不在 holdings 中的股票就是历史持仓
 
     // 4. 保存配置到 IndexedDB（不包含交易数据和自选数据）
     await saveConfig(config);
@@ -262,4 +277,58 @@ export function getYesterdayDate(): string {
  */
 export function getTodayDate(): string {
   return new Date().toISOString().split('T')[0];
+}
+
+/**
+ * 重置所有数据到默认配置
+ */
+export async function resetToDefaultConfig(): Promise<HoldingsConfig> {
+  try {
+    // 1. 清空所有 IndexedDB 数据
+    await clearAllData();
+    
+    // 2. 获取默认配置
+    const defaultConfig = getDefaultConfig();
+    
+    // 3. 保存默认配置到 IndexedDB
+    // 保存 watchlist
+    for (const [code, watchlistItem] of Object.entries(defaultConfig.watchlist || {})) {
+      await saveWatchlistItem({
+        code,
+        name: code,
+        alert_up: watchlistItem.alert_up,
+        alert_down: watchlistItem.alert_down,
+      });
+    }
+    
+    // 保存 holdings 和交易记录
+    for (const [code, holding] of Object.entries(defaultConfig.holdings || {})) {
+      await saveWatchlistItem({
+        code,
+        name: code,
+        alert_up: holding.alert_up,
+        alert_down: holding.alert_down,
+      });
+      
+      // 保存交易记录
+      if (holding.transactions && holding.transactions.length > 0) {
+        for (const transaction of holding.transactions) {
+          await addTransaction({
+            code,
+            time: transaction.time,
+            quantity: transaction.quantity,
+            price: transaction.price,
+          }, `resetToDefaultConfig-${code}`);
+        }
+      }
+    }
+    
+    // 保存主配置
+    await saveConfig(defaultConfig);
+    
+    return defaultConfig;
+  } catch (error) {
+    console.error('重置数据失败:', error);
+    throw error;
+  }
 }

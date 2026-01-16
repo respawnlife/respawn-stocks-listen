@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Container, CssBaseline, ThemeProvider, createTheme, Alert, Snackbar, Typography } from '@mui/material';
+import { Container, CssBaseline, ThemeProvider, createTheme, Alert, Snackbar, Typography, Box, Button, Dialog, DialogTitle, DialogContent, DialogActions, DialogContentText } from '@mui/material';
 import { StockTable } from './components/StockTable';
 import { Statistics } from './components/Statistics';
 import { ActionBar } from './components/ActionBar';
+import { Footer } from './components/Footer';
+import { VERSION } from './version';
 import { StockState, HoldingsConfig } from './types';
-import { initializeConfig, loadHoldingsConfig, saveHoldingsConfig, saveHistoryData, getTodayDate } from './services/storage';
+import { initializeConfig, loadHoldingsConfig, saveHoldingsConfig, saveHistoryData, getTodayDate, resetToDefaultConfig } from './services/storage';
 import { getMultipleRealtimePrices } from './services/stockData';
 import { calculateHoldingFromTransactions } from './utils/calculations';
 import { isTradingTime, shouldStopUpdating } from './utils/tradingTime';
@@ -26,7 +28,25 @@ function App() {
   const [stockStates, setStockStates] = useState<Map<string, StockState>>(new Map());
   const [initialized, setInitialized] = useState(false);
   const [alertMessage, setAlertMessage] = useState<string>('');
+  const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
   const configRef = useRef<HoldingsConfig | null>(null);
+  const initializationRef = useRef<boolean>(false); // 使用 ref 跟踪是否正在初始化或已初始化
+  
+  // 重置所有数据
+  const handleResetData = async () => {
+    try {
+      const defaultConfig = await resetToDefaultConfig();
+      setConfig(defaultConfig);
+      configRef.current = defaultConfig;
+      setResetConfirmOpen(false);
+      setAlertMessage('数据已重置为默认配置');
+      // 重新初始化股票状态
+      window.location.reload(); // 简单粗暴的方式，确保完全重新加载
+    } catch (error) {
+      console.error('重置数据失败:', error);
+      setAlertMessage('重置数据失败，请刷新页面重试');
+    }
+  };
   
   // 初始化配置
   useEffect(() => {
@@ -116,57 +136,93 @@ function App() {
 
   // 初始化：获取一次数据
   useEffect(() => {
-    const initialize = async () => {
+    // 使用 ref 来防止重复执行（包括 StrictMode 的双重执行）
+    if (initializationRef.current || initialized) {
+      return;
+    }
+
+    if (!config) {
+      return;
+    }
+    
+    // 等待 stockStates 初始化完成（通过检查是否有股票代码）
+    // 使用 setTimeout 确保 stockStates 已经更新
+    const checkAndInitialize = () => {
       const stockCodes = Array.from(stockStates.keys());
       if (stockCodes.length === 0) {
-        setInitialized(true);
+        // 如果还没有股票，延迟检查
+        setTimeout(checkAndInitialize, 100);
         return;
       }
 
-      console.log('正在初始化，获取股票数据...');
-      const results = await getMultipleRealtimePrices(stockCodes);
+      // 设置标志，防止重复执行（在调用前设置，避免并发）
+      if (initializationRef.current) {
+        return;
+      }
+      initializationRef.current = true;
+      
+      const initialize = async () => {
+        console.log('正在初始化，获取股票数据...');
+        const results = await getMultipleRealtimePrices(stockCodes);
 
       setStockStates((prev) => {
         const next = new Map(prev);
-        for (const [code, data] of results.entries()) {
+        // 获取当前时间作为更新时间（如果API没有返回时间，使用当前时间）
+        const now = new Date();
+        const currentTimeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
+        
+        // 更新所有股票，无论是否成功获取数据
+        for (const code of stockCodes) {
           const state = next.get(code);
           if (state) {
-            const changePct =
-              data.yesterday_close > 0
-                ? ((data.price - data.yesterday_close) / data.yesterday_close) * 100
-                : 0.0;
+            const data = results.get(code);
+            if (data) {
+              // 成功获取数据，使用API返回的时间
+              const changePct =
+                data.yesterday_close > 0
+                  ? ((data.price - data.yesterday_close) / data.yesterday_close) * 100
+                  : 0.0;
 
-            // 检查报警
-            const [triggeredUp, triggeredDown] = checkPriceAlert(code, data.price, state);
-            if (triggeredUp || triggeredDown) {
-              playAlertSound();
-              const message = triggeredUp
-                ? `${data.name}(${code}) 价格上升至 ${data.price.toFixed(2)}，达到报警价格 ${state.alert_up}`
-                : `${data.name}(${code}) 价格下跌至 ${data.price.toFixed(2)}，达到报警价格 ${state.alert_down}`;
-              setAlertMessage(message);
-              showNotification('股票报警', message);
+              // 检查报警
+              const [triggeredUp, triggeredDown] = checkPriceAlert(code, data.price, state);
+              if (triggeredUp || triggeredDown) {
+                playAlertSound();
+                const message = triggeredUp
+                  ? `${data.name}(${code}) 价格上升至 ${data.price.toFixed(2)}，达到报警价格 ${state.alert_up}`
+                  : `${data.name}(${code}) 价格下跌至 ${data.price.toFixed(2)}，达到报警价格 ${state.alert_down}`;
+                setAlertMessage(message);
+                showNotification('股票报警', message);
+              }
+
+              next.set(code, {
+                ...state,
+                name: data.name,
+                last_price: data.price,
+                last_time: new Date(),
+                last_update_time: data.update_time,
+                last_change_pct: changePct,
+              });
+            } else {
+              // 获取数据失败，但拉取已完成，更新时间（使用当前时间）
+              next.set(code, {
+                ...state,
+                last_time: new Date(),
+                last_update_time: currentTimeStr,
+              });
             }
-
-            next.set(code, {
-              ...state,
-              name: data.name,
-              last_price: data.price,
-              last_time: new Date(),
-              last_update_time: data.update_time,
-              last_change_pct: changePct,
-            });
           }
         }
         return next;
       });
 
-      setInitialized(true);
-    };
+        setInitialized(true);
+      };
 
-    if (stockStates.size > 0 && !initialized && config) {
       initialize();
-    }
-  }, [stockStates, initialized, config]);
+    };
+    
+    checkAndInitialize();
+  }, [config, initialized, stockStates]);
 
   // 主循环：定时更新数据
   useEffect(() => {
@@ -205,33 +261,49 @@ function App() {
 
           setStockStates((current) => {
             const next = new Map(current);
-            for (const [code, data] of results.entries()) {
+            // 获取当前时间作为更新时间（如果API没有返回时间，使用当前时间）
+            const now = new Date();
+            const currentTimeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
+            
+            // 更新所有在交易时间内的股票，无论是否成功获取数据
+            for (const code of tradingStocks) {
               const state = next.get(code);
               if (state) {
-                const changePct =
-                  data.yesterday_close > 0
-                    ? ((data.price - data.yesterday_close) / data.yesterday_close) * 100
-                    : 0.0;
+                const data = results.get(code);
+                if (data) {
+                  // 成功获取数据，使用API返回的时间
+                  const changePct =
+                    data.yesterday_close > 0
+                      ? ((data.price - data.yesterday_close) / data.yesterday_close) * 100
+                      : 0.0;
 
-                // 检查报警
-                const [triggeredUp, triggeredDown] = checkPriceAlert(code, data.price, state);
-                if (triggeredUp || triggeredDown) {
-                  playAlertSound();
-                  const message = triggeredUp
-                    ? `${data.name}(${code}) 价格上升至 ${data.price.toFixed(2)}，达到报警价格 ${state.alert_up}`
-                    : `${data.name}(${code}) 价格下跌至 ${data.price.toFixed(2)}，达到报警价格 ${state.alert_down}`;
-                  setAlertMessage(message);
-                  showNotification('股票报警', message);
+                  // 检查报警
+                  const [triggeredUp, triggeredDown] = checkPriceAlert(code, data.price, state);
+                  if (triggeredUp || triggeredDown) {
+                    playAlertSound();
+                    const message = triggeredUp
+                      ? `${data.name}(${code}) 价格上升至 ${data.price.toFixed(2)}，达到报警价格 ${state.alert_up}`
+                      : `${data.name}(${code}) 价格下跌至 ${data.price.toFixed(2)}，达到报警价格 ${state.alert_down}`;
+                    setAlertMessage(message);
+                    showNotification('股票报警', message);
+                  }
+
+                  next.set(code, {
+                    ...state,
+                    name: data.name,
+                    last_price: data.price,
+                    last_time: new Date(),
+                    last_update_time: data.update_time,
+                    last_change_pct: changePct,
+                  });
+                } else {
+                  // 获取数据失败，但拉取已完成，更新时间（使用当前时间）
+                  next.set(code, {
+                    ...state,
+                    last_time: new Date(),
+                    last_update_time: currentTimeStr,
+                  });
                 }
-
-                next.set(code, {
-                  ...state,
-                  name: data.name,
-                  last_price: data.price,
-                  last_time: new Date(),
-                  last_update_time: data.update_time,
-                  last_change_pct: changePct,
-                });
               }
             }
 
@@ -280,22 +352,7 @@ function App() {
     };
   }, [initialized]);
 
-  // 定期检查配置变化（从 IndexedDB）
-  useEffect(() => {
-    if (!config) return;
-
-    // IndexedDB 不会触发 storage 事件，所以定期检查配置变化
-    const checkInterval = setInterval(async () => {
-      const newConfig = await loadHoldingsConfig();
-      if (JSON.stringify(newConfig) !== JSON.stringify(config)) {
-        setConfig(newConfig);
-      }
-    }, 1000);
-
-    return () => {
-      clearInterval(checkInterval);
-    };
-  }, [config]);
+  // 不再定期检查配置变化，改为在增删改操作时主动保存
 
   const stocksArray = Array.from(stockStates.values()).sort((a, b) =>
     a.code.localeCompare(b.code)
@@ -309,12 +366,15 @@ function App() {
       privacy_mode: !config.privacy_mode,
     };
     setConfig(newConfig);
+    configRef.current = newConfig;
     await saveHoldingsConfig(newConfig);
   };
 
   // 处理配置更新（添加自选股后）
   const handleConfigUpdate = (newConfig: HoldingsConfig) => {
     setConfig(newConfig);
+    // 立即更新 configRef，确保后续操作能获取到最新配置
+    configRef.current = newConfig;
   };
 
   // 打开交易对话框的引用
@@ -391,8 +451,8 @@ function App() {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <Container maxWidth="xl" sx={{ mt: 2, mb: 2 }}>
-        <Statistics
+        <Container maxWidth="xl" sx={{ mt: 2, mb: 8, pb: 2 }}>
+          <Statistics
           stocks={stocksArray}
           funds={config.funds}
           privacyMode={config.privacy_mode}
@@ -440,6 +500,39 @@ function App() {
             {alertMessage}
           </Alert>
         </Snackbar>
+        
+            {/* 重置数据按钮 */}
+            <Box sx={{ mt: 3, mb: 2, textAlign: 'center' }}>
+              <Button
+                variant="outlined"
+                color="error"
+                onClick={() => setResetConfirmOpen(true)}
+                sx={{ textTransform: 'none' }}
+              >
+                重置所有数据
+              </Button>
+            </Box>
+
+            {/* Footer */}
+            <Footer version={VERSION} />
+        
+        {/* 重置确认对话框 */}
+        <Dialog open={resetConfirmOpen} onClose={() => setResetConfirmOpen(false)}>
+          <DialogTitle>确认重置数据</DialogTitle>
+          <DialogContent>
+            <DialogContentText>
+              此操作将清空所有现有数据（包括自选股、交易记录、历史数据等），并用默认配置覆盖。
+              <br />
+              <strong>此操作不可恢复，请谨慎操作！</strong>
+            </DialogContentText>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setResetConfirmOpen(false)}>取消</Button>
+            <Button onClick={handleResetData} color="error" variant="contained">
+              确认重置
+            </Button>
+          </DialogActions>
+        </Dialog>
       </Container>
     </ThemeProvider>
   );

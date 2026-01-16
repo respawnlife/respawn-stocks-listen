@@ -1,5 +1,6 @@
 // 交易记录
 export interface Transaction {
+  id?: number; // 数据库自增ID
   time: string;
   quantity: number;
   price: number;

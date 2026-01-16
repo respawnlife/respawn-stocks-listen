@@ -31,13 +31,13 @@ import {
 } from '@mui/icons-material';
 import { StockState, Transaction, HoldingsConfig } from '../types';
 import { formatPriceFixed, formatPrice } from '../utils/calculations';
-import { saveHoldingsConfig } from '../services/storage';
+// saveHoldingsConfig 现在通过 onConfigUpdate 统一处理
 
 interface StockTableProps {
   stocks: StockState[];
   privacyMode: boolean;
   config: HoldingsConfig;
-  onConfigUpdate: (newConfig: HoldingsConfig) => void;
+  onConfigUpdate: (newConfig: HoldingsConfig) => Promise<void>;
   onAddTransaction?: (stockCode: string) => void;
   onOpenAllTransactionsDialog?: (stockCode?: string) => void;
 }
@@ -83,6 +83,25 @@ export const StockTable: React.FC<StockTableProps> = ({ stocks, privacyMode, con
     return 'default';
   };
 
+  // 格式化更新时间：只显示时分秒，不显示毫秒
+  const formatUpdateTime = (timeStr: string | null | undefined): string => {
+    if (!timeStr || timeStr === '--') return '--';
+    // 如果时间字符串包含毫秒（例如：14:05:23.123 或 2026-01-16 14:05:23.123），则去掉毫秒部分
+    if (timeStr.includes('.')) {
+      const withoutMs = timeStr.split('.')[0];
+      // 如果包含日期部分，只取时分秒部分
+      if (withoutMs.includes(' ')) {
+        return withoutMs.split(' ')[1] || withoutMs;
+      }
+      return withoutMs;
+    }
+    // 如果包含日期部分，只取时分秒部分
+    if (timeStr.includes(' ')) {
+      return timeStr.split(' ')[1] || timeStr;
+    }
+    return timeStr;
+  };
+
   const toggleRow = (code: string) => {
     const newExpanded = new Set(expandedRows);
     if (newExpanded.has(code)) {
@@ -122,7 +141,9 @@ export const StockTable: React.FC<StockTableProps> = ({ stocks, privacyMode, con
     const amountDiff = oldAmount - newAmount; // 如果新金额更大，差额为负，可用资金减少
 
     const newTransactions = [...holding.transactions];
+    // 保留原有交易的ID
     newTransactions[index] = {
+      id: oldTransaction.id,
       time: editForm.time,
       quantity: quantity,
       price: price,
@@ -146,8 +167,7 @@ export const StockTable: React.FC<StockTableProps> = ({ stocks, privacyMode, con
       },
     };
 
-    saveHoldingsConfig(newConfig).then(() => {
-      onConfigUpdate(newConfig);
+    onConfigUpdate(newConfig).then(() => {
       setEditingTransaction(null);
       setEditForm({ time: '', quantity: '', price: '' });
     });
@@ -157,7 +177,7 @@ export const StockTable: React.FC<StockTableProps> = ({ stocks, privacyMode, con
     setDeletingTransaction({ stockCode, index });
   };
 
-  const handleConfirmDelete = () => {
+  const handleConfirmDelete = async () => {
     if (!deletingTransaction) return;
 
     const { stockCode, index } = deletingTransaction;
@@ -167,6 +187,12 @@ export const StockTable: React.FC<StockTableProps> = ({ stocks, privacyMode, con
     // 获取要删除的交易记录
     const transactionToDelete = holding.transactions[index];
     const deletedAmount = transactionToDelete.quantity * transactionToDelete.price;
+
+    // 如果交易有ID，从 transactions 表中删除
+    if (transactionToDelete.id) {
+      const { deleteTransaction } = await import('../services/indexedDB');
+      await deleteTransaction(transactionToDelete.id);
+    }
 
     const newTransactions = holding.transactions.filter((_, i) => i !== index);
 
@@ -188,8 +214,7 @@ export const StockTable: React.FC<StockTableProps> = ({ stocks, privacyMode, con
       },
     };
 
-    saveHoldingsConfig(newConfig).then(() => {
-      onConfigUpdate(newConfig);
+    onConfigUpdate(newConfig).then(() => {
       setDeletingTransaction(null);
     });
   };
@@ -224,26 +249,28 @@ export const StockTable: React.FC<StockTableProps> = ({ stocks, privacyMode, con
     delete newHoldings[stockCode];
 
     const newWatchlist = { ...config.watchlist };
-    delete newWatchlist[stockCode];
-
+    
     // 根据选项处理
     let newAvailableFunds = config.funds.available_funds;
-    let newHistoricalHoldings = config.historical_holdings || [];
 
     if (deleteOption === 'refund') {
       // 选项1：删除并退回所有交易
       newAvailableFunds = config.funds.available_funds + totalRefundAmount;
+      // 从 watchlist 中删除（因为要删除交易记录）
+      delete newWatchlist[stockCode];
+      // 删除交易记录（从 transactions 表删除）
+      // 注意：这里不需要手动删除，因为 onConfigUpdate 会调用 saveHoldingsConfig 来同步交易记录
     } else {
-      // 选项2：删除但不退回交易，转移到历史交易数据
-      if (transactionsToMove.length > 0) {
-        newHistoricalHoldings = [
-          ...newHistoricalHoldings,
-          {
-            code: stockCode,
-            name: stockName,
-            transactions: transactionsToMove,
-          },
-        ];
+      // 选项2：删除但不退回交易
+      // 保留在 watchlist 中（但不在 holdings 中），交易记录保留在 transactions 表中
+      // 这样在加载时会被识别为历史持仓（有交易记录但不在 holdings 中的股票）
+      // 如果股票不在 watchlist 中，添加到 watchlist
+      if (!newWatchlist[stockCode]) {
+        const holding = config.holdings[stockCode];
+        newWatchlist[stockCode] = {
+          alert_up: holding?.alert_up || null,
+          alert_down: holding?.alert_down || null,
+        };
       }
     }
 
@@ -255,11 +282,11 @@ export const StockTable: React.FC<StockTableProps> = ({ stocks, privacyMode, con
       },
       holdings: newHoldings,
       watchlist: newWatchlist,
-      historical_holdings: newHistoricalHoldings,
+      // 历史持仓现在通过 watchlist 和 transactions 表管理，不需要单独的数组
+      historical_holdings: [],
     };
 
-    saveHoldingsConfig(newConfig).then(() => {
-      onConfigUpdate(newConfig);
+    onConfigUpdate(newConfig).then(() => {
       setDeletingStock(null);
       setDeleteOption('refund'); // 重置选项
     });
@@ -370,7 +397,7 @@ export const StockTable: React.FC<StockTableProps> = ({ stocks, privacyMode, con
                       size="small"
                     />
                   </TableCell>
-                  <TableCell>{stock.last_update_time}</TableCell>
+                  <TableCell>{formatUpdateTime(stock.last_update_time)}</TableCell>
                   <TableCell>
                     <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
                       <Button
@@ -437,6 +464,7 @@ export const StockTable: React.FC<StockTableProps> = ({ stocks, privacyMode, con
                           <Table size="small">
                             <TableHead>
                               <TableRow>
+                                <TableCell>ID</TableCell>
                                 <TableCell>时间</TableCell>
                                 <TableCell>数量（股）</TableCell>
                                 <TableCell>单价</TableCell>
@@ -447,6 +475,7 @@ export const StockTable: React.FC<StockTableProps> = ({ stocks, privacyMode, con
                             <TableBody>
                               {stock.transactions.map((transaction, index) => (
                                 <TableRow key={index}>
+                                  <TableCell>{transaction.id || '--'}</TableCell>
                                   <TableCell>{transaction.time}</TableCell>
                                   <TableCell>
                                     {privacyMode ? '***' : Math.floor(transaction.quantity).toLocaleString()}
@@ -457,7 +486,7 @@ export const StockTable: React.FC<StockTableProps> = ({ stocks, privacyMode, con
                                   <TableCell>
                                     {privacyMode
                                       ? '***'
-                                      : (transaction.quantity * transaction.price).toFixed(2)}
+                                      : (transaction.quantity * transaction.price).toFixed(3)}
                                   </TableCell>
                                   <TableCell align="right">
                                     <IconButton
@@ -495,13 +524,14 @@ export const StockTable: React.FC<StockTableProps> = ({ stocks, privacyMode, con
       </Table>
 
       {/* 编辑交易对话框 */}
-      <Dialog open={!!editingTransaction} onClose={() => setEditingTransaction(null)} maxWidth="sm" fullWidth>
-        <DialogTitle>编辑交易记录</DialogTitle>
-        <DialogContent>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
+      <Dialog open={!!editingTransaction} onClose={() => setEditingTransaction(null)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ pb: 1 }}>编辑交易记录</DialogTitle>
+        <DialogContent sx={{ pt: 1 }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
             <TextField
               label="交易时间"
               type="datetime-local"
+              size="small"
               fullWidth
               variant="outlined"
               value={editForm.time ? (() => {
@@ -535,6 +565,7 @@ export const StockTable: React.FC<StockTableProps> = ({ stocks, privacyMode, con
             <TextField
               label="数量（股）"
               type="number"
+              size="small"
               fullWidth
               variant="outlined"
               value={editForm.quantity}
@@ -544,6 +575,7 @@ export const StockTable: React.FC<StockTableProps> = ({ stocks, privacyMode, con
             <TextField
               label="单价"
               type="number"
+              size="small"
               fullWidth
               variant="outlined"
               value={editForm.price}
@@ -552,21 +584,21 @@ export const StockTable: React.FC<StockTableProps> = ({ stocks, privacyMode, con
             />
           </Box>
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setEditingTransaction(null)}>取消</Button>
-          <Button onClick={handleSaveEdit} variant="contained">保存</Button>
+        <DialogActions sx={{ px: 2, pb: 1.5 }}>
+          <Button size="small" onClick={() => setEditingTransaction(null)}>取消</Button>
+          <Button size="small" onClick={handleSaveEdit} variant="contained">保存</Button>
         </DialogActions>
       </Dialog>
 
       {/* 删除交易记录确认对话框 */}
-      <Dialog open={!!deletingTransaction} onClose={() => setDeletingTransaction(null)}>
-        <DialogTitle>确认删除</DialogTitle>
-        <DialogContent>
-          <Typography>确定要删除这条交易记录吗？此操作不可恢复。</Typography>
+      <Dialog open={!!deletingTransaction} onClose={() => setDeletingTransaction(null)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ pb: 1 }}>确认删除</DialogTitle>
+        <DialogContent sx={{ pt: 1 }}>
+          <Typography variant="body2">确定要删除这条交易记录吗？此操作不可恢复。</Typography>
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setDeletingTransaction(null)}>取消</Button>
-          <Button onClick={handleConfirmDelete} variant="contained" color="error">
+        <DialogActions sx={{ px: 2, pb: 1.5 }}>
+          <Button size="small" onClick={() => setDeletingTransaction(null)}>取消</Button>
+          <Button size="small" onClick={handleConfirmDelete} variant="contained" color="error">
             删除
           </Button>
         </DialogActions>
@@ -574,9 +606,9 @@ export const StockTable: React.FC<StockTableProps> = ({ stocks, privacyMode, con
 
       {/* 删除自选股确认对话框 */}
       <Dialog open={!!deletingStock} onClose={() => { setDeletingStock(null); setDeleteOption('refund'); }} maxWidth="sm" fullWidth>
-        <DialogTitle>确认删除自选股</DialogTitle>
-        <DialogContent>
-          <Typography sx={{ mb: 2 }}>
+        <DialogTitle sx={{ pb: 1 }}>确认删除自选股</DialogTitle>
+        <DialogContent sx={{ pt: 1 }}>
+          <Typography variant="body2" sx={{ mb: 1.5 }}>
             确定要删除该自选股吗？请选择删除方式：
           </Typography>
           <FormControl component="fieldset">
@@ -618,9 +650,9 @@ export const StockTable: React.FC<StockTableProps> = ({ stocks, privacyMode, con
             此操作不可恢复，确定要继续吗？
           </Typography>
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => { setDeletingStock(null); setDeleteOption('refund'); }}>取消</Button>
-          <Button onClick={handleConfirmDeleteStock} variant="contained" color="error">
+        <DialogActions sx={{ px: 2, pb: 1.5 }}>
+          <Button size="small" onClick={() => { setDeletingStock(null); setDeleteOption('refund'); }}>取消</Button>
+          <Button size="small" onClick={handleConfirmDeleteStock} variant="contained" color="error">
             确认删除
           </Button>
         </DialogActions>
