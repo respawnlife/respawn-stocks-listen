@@ -31,6 +31,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
   const [transactionError, setTransactionError] = useState<string>('');
   const [transactionStockValidated, setTransactionStockValidated] = useState(false);
   const [transactionCurrentPrice, setTransactionCurrentPrice] = useState<number | null>(null);
+  const [transactionPriceInitialized, setTransactionPriceInitialized] = useState(false);
 
   // 增减本金相关状态
   const [openFundsDialog, setOpenFundsDialog] = useState(false);
@@ -191,6 +192,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
     setTransactionError('');
     setTransactionStockValidated(false);
     setTransactionCurrentPrice(null);
+    setTransactionPriceInitialized(false);
   };
 
   // 验证交易股票代码
@@ -250,9 +252,13 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
         onStockAdded(code);
       }
 
-      // 设置当前价格
+      // 设置当前价格（用于显示）
       setTransactionCurrentPrice(data.price);
-      setTransactionPrice(data.price.toFixed(3));
+      // 只在初始化时设置输入框价格
+      if (!transactionPriceInitialized) {
+        setTransactionPrice(data.price.toFixed(3));
+        setTransactionPriceInitialized(true);
+      }
       setTransactionStockCode(code);
       setTransactionStockCodeInput('');
       setTransactionStockValidated(true);
