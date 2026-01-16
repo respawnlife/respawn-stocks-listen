@@ -28,6 +28,19 @@ function App() {
   const [alertMessage, setAlertMessage] = useState<string>('');
   const configRef = useRef<HoldingsConfig | null>(null);
   
+  // 初始化配置
+  useEffect(() => {
+    const loadConfig = async () => {
+      try {
+        const loadedConfig = await initializeConfig();
+        setConfig(loadedConfig);
+      } catch (error) {
+        console.error('加载配置失败:', error);
+      }
+    };
+    loadConfig();
+  }, []);
+
   // 保持 configRef 与 config 同步
   useEffect(() => {
     configRef.current = config;
