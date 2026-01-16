@@ -314,6 +314,11 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
       alert_down: null,
     };
 
+    // 确保 transactions 是数组
+    const existingTransactions = Array.isArray(existingHolding.transactions) 
+      ? existingHolding.transactions 
+      : [];
+
     const newTransaction: Transaction = {
       time: transactionTime,
       quantity: quantity,
@@ -334,7 +339,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
         ...config.holdings,
         [code]: {
           ...existingHolding,
-          transactions: [...existingHolding.transactions, newTransaction],
+          transactions: [...existingTransactions, newTransaction],
         },
       },
     };

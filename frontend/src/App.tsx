@@ -57,8 +57,12 @@ function App() {
       const holdingCodes = Object.keys(config.holdings || {});
       for (const code of holdingCodes) {
         const holdingConfig = config.holdings[code];
+        // 确保 transactions 是数组
+        const transactions = Array.isArray(holdingConfig.transactions) 
+          ? holdingConfig.transactions 
+          : [];
         const [holdingQuantity, holdingPrice] = calculateHoldingFromTransactions(
-          holdingConfig.transactions
+          transactions
         );
 
         // 保留已有的价格数据
@@ -72,7 +76,7 @@ function App() {
           last_change_pct: existingState?.last_change_pct ?? 0.0,
           holding_price: holdingQuantity > 0 ? holdingPrice : null,
           holding_quantity: holdingQuantity,
-          transactions: holdingConfig.transactions,
+          transactions: transactions,
           alert_up: holdingConfig.alert_up,
           alert_down: holdingConfig.alert_down,
           alert_triggered_up: existingState?.alert_triggered_up ?? false,
