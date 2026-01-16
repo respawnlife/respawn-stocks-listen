@@ -4,7 +4,7 @@ import { StockTable } from './components/StockTable';
 import { Statistics } from './components/Statistics';
 import { ActionBar } from './components/ActionBar';
 import { StockState, HoldingsConfig } from './types';
-import { loadHoldingsConfig, saveHoldingsConfig, saveHistoryData, getTodayDate } from './services/storage';
+import { initializeConfig, loadHoldingsConfig, saveHoldingsConfig, saveHistoryData, getTodayDate } from './services/storage';
 import { getMultipleRealtimePrices } from './services/stockData';
 import { calculateHoldingFromTransactions } from './utils/calculations';
 import { isTradingTime, shouldStopUpdating } from './utils/tradingTime';
