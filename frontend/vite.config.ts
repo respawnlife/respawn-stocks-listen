@@ -43,14 +43,11 @@ export default defineConfig({
             if (id.includes('lightweight-charts')) {
               return 'charts';
             }
-            // 将所有 MUI 相关库（包括 emotion）放在一起，避免循环依赖
-            // 注意：MUI 依赖 React，但我们将它们分开以避免循环依赖警告
-            if (id.includes('@mui') || id.includes('@emotion')) {
-              return 'mui';
-            }
-            // React 相关 - 放在 MUI 之后定义，确保先加载
-            if (id.includes('react') || id.includes('react-dom')) {
-              return 'react-vendor';
+            // 将 React 和 MUI 放在一起，避免循环依赖和初始化顺序问题
+            // MUI 强依赖 React，合并可以确保正确的加载顺序
+            if (id.includes('react') || id.includes('react-dom') || 
+                id.includes('@mui') || id.includes('@emotion')) {
+              return 'react-mui';
             }
             // 其他 node_modules 依赖
             return 'vendor';
