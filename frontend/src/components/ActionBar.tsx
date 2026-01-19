@@ -1290,7 +1290,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
 
               // 如果是卖出（负数），检查修改后的持仓是否足够（仅对当前持仓的交易检查）
               if (quantity < 0 && !isHistorical) {
-                const holding = newConfig.holdings[code];
+                const holding = config.holdings[code];
                 if (holding) {
                   const transactions = Array.isArray(holding.transactions) ? holding.transactions : [];
                   // 计算除了当前编辑交易之外的其他交易的总数量

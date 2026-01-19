@@ -152,7 +152,7 @@ export const StockTable: React.FC<StockTableProps> = ({ stocks, privacyMode, con
         // 计算除了当前编辑交易之外的其他交易的总数量
         let otherQuantity = 0;
         for (let i = 0; i < transactions.length; i++) {
-          if (i !== transactionIndex) {
+          if (i !== index) {
             otherQuantity += Number(transactions[i].quantity) || 0;
           }
         }

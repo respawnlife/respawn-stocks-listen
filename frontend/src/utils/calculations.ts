@@ -2,6 +2,8 @@ import { Transaction } from '../types';
 
 /**
  * 从交易记录数组计算总数量和平均成本价
+ * 成本价计算方式：(买入总金额 - 卖出总金额) / (买入总股数 - 卖出总股数)
+ * 即：净投入金额 / 净持仓数量
  */
 export function calculateHoldingFromTransactions(
   transactions: Transaction[]
@@ -10,30 +12,24 @@ export function calculateHoldingFromTransactions(
     return [0.0, 0.0];
   }
 
-  let totalQuantity = 0.0;
-  let totalCost = 0.0;
+  let totalQuantity = 0.0; // 当前持仓数量（买入 - 卖出）
+  let totalCost = 0.0; // 净投入金额（买入总金额 - 卖出总金额）
 
   for (const trans of transactions) {
     const quantity = Number(trans.quantity) || 0;
     const price = Number(trans.price) || 0;
-    // 支持正数（买入）和负数（卖出）
+    
     if (quantity !== 0 && price > 0) {
-      totalQuantity += quantity;
-      // 买入增加成本，卖出减少成本（按平均成本价计算）
-      if (quantity > 0) {
-        // 买入：增加总成本
-        totalCost += quantity * price;
-      } else {
-        // 卖出：按当前平均成本价减少成本（如果已有持仓）
-        const currentAvgPrice = totalQuantity > 0 ? totalCost / totalQuantity : price;
-        totalCost += quantity * currentAvgPrice; // 负数quantity，所以是减少成本
-      }
+      const amount = quantity * price; // 买入为正，卖出为负
+      totalCost += amount; // 买入增加成本，卖出减少成本
+      totalQuantity += quantity; // 买入增加数量，卖出减少数量（quantity是负数）
     }
   }
 
   // 确保持仓数量不为负数
   totalQuantity = Math.max(0, totalQuantity);
   
+  // 成本价 = 净投入金额 / 净持仓数量
   const avgPrice = totalQuantity > 0 ? totalCost / totalQuantity : 0.0;
   return [totalQuantity, avgPrice];
 }
