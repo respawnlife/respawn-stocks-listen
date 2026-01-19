@@ -630,9 +630,16 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
                 value={transactionStockCode}
                 label="股票代码"
                 onChange={(e) => {
-                  setTransactionStockCode(e.target.value);
+                  const selectedCode = e.target.value;
+                  setTransactionStockCode(selectedCode);
                   setTransactionStockCodeInput('');
                   setTransactionError('');
+                  // 如果是从自选/持仓中选择的，直接设置为已验证状态
+                  if (selectedCode && getAllStockCodes().includes(selectedCode)) {
+                    setTransactionStockValidated(true);
+                  } else {
+                    setTransactionStockValidated(false);
+                  }
                 }}
                 disabled={transactionLoading}
               >
@@ -661,7 +668,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
               helperText={transactionStockCode ? '已选择' : '输入后需验证'}
             />
 
-            {!transactionStockValidated && (transactionStockCode || transactionStockCodeInput) && (
+            {!transactionStockValidated && transactionStockCodeInput && (
               <Button
                 variant="outlined"
                 onClick={handleValidateTransactionStock}
@@ -904,7 +911,9 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
               startIcon={<Add />}
               onClick={() => {
                 setOpenHistoryDialog(false);
-                handleOpenTransaction();
+                // 如果当前有筛选的股票代码，直接传入
+                const presetCode = filterStockCode || filterStockCodeInput.trim().toUpperCase() || undefined;
+                handleOpenTransaction(presetCode);
               }}
               size="small"
             >
@@ -1447,9 +1456,15 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
                 const holding = config.holdings[code];
                 if (holding) {
                   const transaction = holding.transactions[transactionIndex];
-                  // 计算资金变化：买入减少资金，卖出增加资金
-                  const transactionAmount = Math.abs(transaction.quantity) * transaction.price;
-                  const fundsChange = transaction.quantity > 0 ? -transactionAmount : transactionAmount; // 买入为负，卖出为正
+                  // 使用 totalAmount（如果存在），否则使用 quantity * price
+                  const transactionAmount = transaction.totalAmount ?? (Math.abs(transaction.quantity) * transaction.price);
+                  
+                  // 删除交易时，根据交易类型恢复资金
+                  // 买入（正数）：删除时退回资金（增加可用资金）
+                  // 卖出（负数）：删除时扣回资金（减少可用资金）
+                  const newAvailableFunds = transaction.quantity > 0
+                    ? config.funds.available_funds + transactionAmount  // 买入删除，退回资金
+                    : config.funds.available_funds - transactionAmount; // 卖出删除，扣回资金
 
                   // 如果交易有ID，从 transactions 表中删除
                   if (transaction.id) {
@@ -1458,10 +1473,6 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
 
                   const newTransactions = [...holding.transactions];
                   newTransactions.splice(transactionIndex, 1);
-
-                  // 删除交易时，退回资金
-                  // 如果原交易是买入（正数），删除后增加资金；如果原交易是卖出（负数），删除后减少资金
-                  const newAvailableFunds = config.funds.available_funds - fundsChange; // fundsChange已经考虑了买入/卖出的符号
 
                   const newConfig = {
                     ...config,

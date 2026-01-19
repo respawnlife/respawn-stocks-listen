@@ -236,8 +236,12 @@ export const StockTable: React.FC<StockTableProps> = ({ stocks, privacyMode, con
 
     const newTransactions = holding.transactions.filter((_, i) => i !== index);
 
-    // 删除交易时，退回资金（增加可用资金）
-    const newAvailableFunds = config.funds.available_funds + deletedAmount;
+    // 删除交易时，根据交易类型恢复资金
+    // 买入（正数）：删除时退回资金（增加可用资金）
+    // 卖出（负数）：删除时扣回资金（减少可用资金）
+    const newAvailableFunds = transactionToDelete.quantity > 0
+      ? config.funds.available_funds + deletedAmount  // 买入删除，退回资金
+      : config.funds.available_funds - deletedAmount; // 卖出删除，扣回资金
 
     const newConfig = {
       ...config,
