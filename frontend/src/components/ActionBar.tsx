@@ -125,6 +125,16 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
       }
 
       // 添加成功，更新配置
+      // 获取当前时间作为添加时间
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const day = String(now.getDate()).padStart(2, '0');
+      const hours = String(now.getHours()).padStart(2, '0');
+      const minutes = String(now.getMinutes()).padStart(2, '0');
+      const seconds = String(now.getSeconds()).padStart(2, '0');
+      const addTime = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+      
       const newConfig = {
         ...config,
         watchlist: {
@@ -132,6 +142,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
           [code]: {
             alert_up: null,
             alert_down: null,
+            add_time: addTime,
           },
         },
       };
@@ -312,6 +323,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
           [code]: {
             alert_up: null,
             alert_down: null,
+            add_time: new Date().toISOString().replace('T', ' ').substring(0, 19), // 当前时间
           },
         },
       };
@@ -738,7 +750,13 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
                   fullWidth
                   variant="outlined"
                   value={transactionQuantity}
-                  onChange={(e) => setTransactionQuantity(e.target.value)}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    // 允许负数、小数和空字符串
+                    if (value === '' || value === '-' || /^-?\d*\.?\d*$/.test(value)) {
+                      setTransactionQuantity(value);
+                    }
+                  }}
                   inputProps={{ step: 1 }}
                   helperText="正数为买入，负数为卖出（如：-100表示卖出100股）"
                 />
@@ -1228,14 +1246,20 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
               }}
               InputLabelProps={{ shrink: true }}
             />
-            <TextField
+              <TextField
               label="数量（股）"
               type="number"
               size="small"
               fullWidth
               variant="outlined"
               value={historyEditForm.quantity}
-              onChange={(e) => setHistoryEditForm({ ...historyEditForm, quantity: e.target.value })}
+              onChange={(e) => {
+                const value = e.target.value;
+                // 允许负数、小数和空字符串
+                if (value === '' || value === '-' || /^-?\d*\.?\d*$/.test(value)) {
+                  setHistoryEditForm({ ...historyEditForm, quantity: value });
+                }
+              }}
               inputProps={{ step: 1 }}
               helperText="正数为买入，负数为卖出"
             />

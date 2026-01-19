@@ -16,6 +16,7 @@ import {
   clearAllData,
   addTransaction,
   loadHoldingsTransactions,
+  loadWatchlistItem,
 } from './indexedDB';
 
 /**
@@ -71,9 +72,15 @@ export async function initializeConfig(): Promise<HoldingsConfig> {
   config.watchlist = {};
   
   // 处理所有自选股
+  const now = new Date();
+  const currentTimeStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+  
   for (const [code, watchlistItem] of Object.entries(watchlistItems)) {
     const transactions = holdingsTransactions[code] || [];
     const validTransactions = Array.isArray(transactions) ? transactions : [];
+    
+    // 如果老数据没有add_time，初始化为当前时间
+    const addTime = watchlistItem.add_time || currentTimeStr;
     
     if (validTransactions.length > 0) {
       // 有交易记录，是持仓
@@ -87,7 +94,16 @@ export async function initializeConfig(): Promise<HoldingsConfig> {
       config.watchlist[code] = {
         alert_up: watchlistItem.alert_up,
         alert_down: watchlistItem.alert_down,
+        add_time: addTime,
       };
+    }
+    
+    // 如果老数据没有add_time，更新到数据库
+    if (!watchlistItem.add_time) {
+      await saveWatchlistItem({
+        ...watchlistItem,
+        add_time: currentTimeStr,
+      });
     }
   }
 
@@ -135,9 +151,15 @@ export async function loadHoldingsConfig(): Promise<HoldingsConfig> {
   config.watchlist = {};
   
   // 处理所有自选股
+  const now = new Date();
+  const currentTimeStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+  
   for (const [code, watchlistItem] of Object.entries(watchlistItems)) {
     const transactions = holdingsTransactions[code] || [];
     const validTransactions = Array.isArray(transactions) ? transactions : [];
+    
+    // 如果老数据没有add_time，初始化为当前时间
+    const addTime = watchlistItem.add_time || currentTimeStr;
     
     if (validTransactions.length > 0) {
       // 有交易记录，是持仓
@@ -151,7 +173,16 @@ export async function loadHoldingsConfig(): Promise<HoldingsConfig> {
       config.watchlist[code] = {
         alert_up: watchlistItem.alert_up,
         alert_down: watchlistItem.alert_down,
+        add_time: addTime,
       };
+    }
+    
+    // 如果老数据没有add_time，更新到数据库
+    if (!watchlistItem.add_time) {
+      await saveWatchlistItem({
+        ...watchlistItem,
+        add_time: currentTimeStr,
+      });
     }
   }
 
@@ -180,11 +211,16 @@ export async function saveHoldingsConfig(config: HoldingsConfig): Promise<void> 
       
       if (holding) {
         // 是持仓，保存到 watchlist 表
+        // 先尝试从数据库加载已有的add_time，如果没有则使用当前时间
+        const existingItem = await loadWatchlistItem(code);
+        const addTime = existingItem?.add_time || new Date().toISOString().replace('T', ' ').substring(0, 19);
+        
         await saveWatchlistItem({
           code,
           name: code, // 名称可以从实时数据更新
           alert_up: holding.alert_up,
           alert_down: holding.alert_down,
+          add_time: addTime, // 保留已有的添加时间，如果没有则使用当前时间
         });
         
         // 保存交易记录
@@ -215,6 +251,7 @@ export async function saveHoldingsConfig(config: HoldingsConfig): Promise<void> 
           name: code,
           alert_up: watchlistItem.alert_up,
           alert_down: watchlistItem.alert_down,
+          add_time: watchlistItem.add_time, // 保存添加时间
         });
       }
     }
@@ -298,12 +335,16 @@ export async function resetToDefaultConfig(): Promise<HoldingsConfig> {
     
     // 3. 保存默认配置到 IndexedDB
     // 保存 watchlist
+    const now = new Date();
+    const currentTimeStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+    
     for (const [code, watchlistItem] of Object.entries(defaultConfig.watchlist || {})) {
       await saveWatchlistItem({
         code,
         name: code,
         alert_up: watchlistItem.alert_up,
         alert_down: watchlistItem.alert_down,
+        add_time: watchlistItem.add_time || currentTimeStr, // 如果没有添加时间，使用当前时间
       });
     }
     
@@ -314,6 +355,7 @@ export async function resetToDefaultConfig(): Promise<HoldingsConfig> {
         name: code,
         alert_up: holding.alert_up,
         alert_down: holding.alert_down,
+        add_time: currentTimeStr, // 重置时使用当前时间
       });
       
       // 保存交易记录

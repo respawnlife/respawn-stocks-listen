@@ -700,7 +700,13 @@ export const StockTable: React.FC<StockTableProps> = ({ stocks, privacyMode, con
               fullWidth
               variant="outlined"
               value={editForm.quantity}
-              onChange={(e) => setEditForm({ ...editForm, quantity: e.target.value })}
+              onChange={(e) => {
+                const value = e.target.value;
+                // 允许负数、小数和空字符串
+                if (value === '' || value === '-' || /^-?\d*\.?\d*$/.test(value)) {
+                  setEditForm({ ...editForm, quantity: value });
+                }
+              }}
               inputProps={{ step: 1 }}
               helperText="正数为买入，负数为卖出"
             />

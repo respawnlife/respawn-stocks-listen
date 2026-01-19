@@ -24,6 +24,7 @@ export interface HoldingConfig {
 // 自选股配置（仅监控，无持仓）
 export interface WatchlistConfig {
   alerts?: AlertRule[]; // 报警规则数组
+  add_time?: string; // 添加自选的时间（YYYY-MM-DD HH:mm:ss格式）
   // 向后兼容：保留旧的字段
   alert_up?: number | null;
   alert_down?: number | null;

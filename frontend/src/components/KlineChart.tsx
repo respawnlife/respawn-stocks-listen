@@ -10,6 +10,8 @@ import {
   ToggleButtonGroup,
   Typography,
   CircularProgress,
+  Switch,
+  FormControlLabel,
 } from '@mui/material';
 import { createChart, IChartApi, ISeriesApi, ColorType, CandlestickSeries, ITimeScaleApi, SeriesMarker, Time, createSeriesMarkers, LineStyle } from 'lightweight-charts';
 import { getKlineData, KlineData, KlinePeriod } from '../services/klineData';
@@ -31,14 +33,17 @@ export const KlineChart: React.FC<KlineChartProps> = ({ open, onClose, stockCode
   const candlestickSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
   const markersPluginRef = useRef<any>(null);
   const priceLineRef = useRef<any>(null);
+  const rangePriceLinesRef = useRef<{ high: any; low: any; avg: any }>({ high: null, low: null, avg: null });
   const badgeContainerRef = useRef<HTMLDivElement>(null);
   const badgeElementsRef = useRef<Map<string, HTMLDivElement>>(new Map());
+  const chartDataRef = useRef<Array<{ time: any; open: number; high: number; low: number; close: number }>>([]);
   const [period, setPeriod] = useState<KlinePeriod>('day');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [tooltipData, setTooltipData] = useState<{ x: number; y: number; transactions: Transaction[]; date: string } | null>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
+  const [showPriceRange, setShowPriceRange] = useState(false);
   
   // 加载交易数据
   const loadTransactions = React.useCallback(async () => {
@@ -58,6 +63,91 @@ export const KlineChart: React.FC<KlineChartProps> = ({ open, onClose, stockCode
       setTransactions([]);
     }
   }, [stockCode]);
+
+  // 更新价格区间线（最高价、最低价、均价）
+  const updatePriceRangeLines = React.useCallback(() => {
+    if (!candlestickSeriesRef.current || !chartRef.current || !showPriceRange) {
+      // 如果开关关闭，移除所有价格区间线
+      if (rangePriceLinesRef.current.high) {
+        candlestickSeriesRef.current.removePriceLine(rangePriceLinesRef.current.high);
+        rangePriceLinesRef.current.high = null;
+      }
+      if (rangePriceLinesRef.current.low) {
+        candlestickSeriesRef.current.removePriceLine(rangePriceLinesRef.current.low);
+        rangePriceLinesRef.current.low = null;
+      }
+      if (rangePriceLinesRef.current.avg) {
+        candlestickSeriesRef.current.removePriceLine(rangePriceLinesRef.current.avg);
+        rangePriceLinesRef.current.avg = null;
+      }
+      return;
+    }
+
+    const timeScale = chartRef.current.timeScale();
+    const visibleRange = timeScale.getVisibleRange();
+    
+    if (!visibleRange || !visibleRange.from || !visibleRange.to) {
+      return;
+    }
+
+    // 获取可见区域内的数据
+    const visibleData = chartDataRef.current.filter((item) => {
+      const itemTime = typeof item.time === 'string' ? new Date(item.time).getTime() : item.time;
+      const fromTime = typeof visibleRange.from === 'string' ? new Date(visibleRange.from).getTime() : visibleRange.from;
+      const toTime = typeof visibleRange.to === 'string' ? new Date(visibleRange.to).getTime() : visibleRange.to;
+      return itemTime >= fromTime && itemTime <= toTime;
+    });
+
+    if (visibleData.length === 0) {
+      return;
+    }
+
+    // 计算最高价、最低价和均价
+    const high = Math.max(...visibleData.map(d => d.high));
+    const low = Math.min(...visibleData.map(d => d.low));
+    const avg = visibleData.reduce((sum, d) => sum + (d.high + d.low) / 2, 0) / visibleData.length;
+
+    // 移除旧的价格线
+    if (rangePriceLinesRef.current.high) {
+      candlestickSeriesRef.current.removePriceLine(rangePriceLinesRef.current.high);
+    }
+    if (rangePriceLinesRef.current.low) {
+      candlestickSeriesRef.current.removePriceLine(rangePriceLinesRef.current.low);
+    }
+    if (rangePriceLinesRef.current.avg) {
+      candlestickSeriesRef.current.removePriceLine(rangePriceLinesRef.current.avg);
+    }
+
+    // 创建新的价格线
+    try {
+      rangePriceLinesRef.current.high = candlestickSeriesRef.current.createPriceLine({
+        price: high,
+        color: '#000000', // 黑色
+        lineWidth: 1,
+        lineStyle: LineStyle.Dashed, // 虚线
+        axisLabelVisible: true,
+        title: '最高价',
+      });
+      rangePriceLinesRef.current.low = candlestickSeriesRef.current.createPriceLine({
+        price: low,
+        color: '#000000', // 黑色
+        lineWidth: 1,
+        lineStyle: LineStyle.Dashed, // 虚线
+        axisLabelVisible: true,
+        title: '最低价',
+      });
+      rangePriceLinesRef.current.avg = candlestickSeriesRef.current.createPriceLine({
+        price: avg,
+        color: '#000000', // 黑色
+        lineWidth: 1,
+        lineStyle: LineStyle.Dashed, // 虚线
+        axisLabelVisible: true,
+        title: '均价',
+      });
+    } catch (err) {
+      console.error('[K线图] 添加价格区间线失败:', err);
+    }
+  }, [showPriceRange]);
 
   // 根据周期聚合交易数据
   const aggregateTransactionsByPeriod = React.useCallback((transactions: Transaction[], period: KlinePeriod): Map<string, Transaction[]> => {
@@ -175,7 +265,10 @@ export const KlineChart: React.FC<KlineChartProps> = ({ open, onClose, stockCode
         
         console.log(`[K线图] 转换后保留 ${chartData.length} 条数据`);
 
-      console.log(`[K线图] 转换后的图表数据:`, chartData.slice(0, 3));
+        console.log(`[K线图] 转换后的图表数据:`, chartData.slice(0, 3));
+
+        // 保存chartData供后续使用
+        chartDataRef.current = chartData;
 
       // 聚合交易数据
       const transactionsByPeriod = aggregateTransactionsByPeriod(transactions, period);
@@ -302,6 +395,18 @@ export const KlineChart: React.FC<KlineChartProps> = ({ open, onClose, stockCode
         
         // 添加持仓价格线
         updateHoldingPriceLine(transactions);
+        
+        // 订阅可见区域变化事件，更新价格区间线（延迟订阅，确保updatePriceRangeLines已定义）
+        if (chartRef.current) {
+          const timeScale = chartRef.current.timeScale();
+          timeScale.subscribeVisibleTimeRangeChange(() => {
+            updatePriceRangeLines();
+          });
+          // 初始更新价格区间线
+          setTimeout(() => {
+            updatePriceRangeLines();
+          }, 100);
+        }
       } else {
         console.error('[K线图] 图表引用不存在');
         setError('图表初始化失败');
@@ -414,6 +519,7 @@ export const KlineChart: React.FC<KlineChartProps> = ({ open, onClose, stockCode
     chart.subscribeCrosshairMove(updatePositions);
     timeScale.subscribeVisibleTimeRangeChange(updatePositions);
   };
+
 
   // 更新持仓价格线
   const updateHoldingPriceLine = (transactions: Transaction[]) => {
@@ -710,7 +816,25 @@ export const KlineChart: React.FC<KlineChartProps> = ({ open, onClose, stockCode
           <Typography variant="h6">
             {stockName} ({stockCode}) - K线图
           </Typography>
-          <ToggleButtonGroup
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={showPriceRange}
+                  onChange={(e) => {
+                    setShowPriceRange(e.target.checked);
+                    // 延迟更新，确保state已更新
+                    setTimeout(() => {
+                      updatePriceRangeLines();
+                    }, 0);
+                  }}
+                  size="small"
+                />
+              }
+              label="价格区间"
+              sx={{ mr: 0 }}
+            />
+            <ToggleButtonGroup
             value={period}
             exclusive
             onChange={handlePeriodChange}
@@ -727,6 +851,7 @@ export const KlineChart: React.FC<KlineChartProps> = ({ open, onClose, stockCode
               月K
             </ToggleButton>
           </ToggleButtonGroup>
+          </Box>
         </Box>
       </DialogTitle>
       <DialogContent sx={{ pt: 1, position: 'relative' }}>
