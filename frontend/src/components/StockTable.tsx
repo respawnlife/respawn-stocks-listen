@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, Suspense, lazy } from 'react';
 import {
   Table,
   TableBody,
@@ -25,6 +25,7 @@ import {
   FormLabel,
   Select,
   MenuItem,
+  CircularProgress,
 } from '@mui/material';
 import {
   Edit,
@@ -34,8 +35,10 @@ import {
 } from '@mui/icons-material';
 import { StockState, Transaction, HoldingsConfig } from '../types';
 import { formatPriceFixed, formatPrice } from '../utils/calculations';
-import { KlineChart } from './KlineChart';
 // saveHoldingsConfig 现在通过 onConfigUpdate 统一处理
+
+// 动态导入 KlineChart 组件（包含大型图表库，按需加载）
+const KlineChart = lazy(() => import('./KlineChart').then(module => ({ default: module.KlineChart })));
 
 interface StockTableProps {
   stocks: StockState[];
@@ -921,12 +924,22 @@ export const StockTable: React.FC<StockTableProps> = ({ stocks, privacyMode, con
 
       {/* K线图对话框 */}
       {klineChartOpen && (
-        <KlineChart
-          open={!!klineChartOpen}
-          onClose={() => setKlineChartOpen(null)}
-          stockCode={klineChartOpen.stockCode}
-          stockName={klineChartOpen.stockName}
-        />
+        <Suspense fallback={
+          <Dialog open={true} onClose={() => setKlineChartOpen(null)} maxWidth="lg" fullWidth>
+            <DialogContent>
+              <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 400 }}>
+                <CircularProgress />
+              </Box>
+            </DialogContent>
+          </Dialog>
+        }>
+          <KlineChart
+            open={!!klineChartOpen}
+            onClose={() => setKlineChartOpen(null)}
+            stockCode={klineChartOpen.stockCode}
+            stockName={klineChartOpen.stockName}
+          />
+        </Suspense>
       )}
     </TableContainer>
   );

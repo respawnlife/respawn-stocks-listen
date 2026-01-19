@@ -33,6 +33,93 @@ export default defineConfig({
   build: {
     outDir: fileURLToPath(new URL('../docs', import.meta.url)),
     emptyOutDir: true,
+    chunkSizeWarningLimit: 100,
+    rollupOptions: {
+      output: {
+        manualChunks: (id) => {
+          // 将 node_modules 中的大型依赖分离到单独的 chunk
+          if (id.includes('node_modules')) {
+            // MUI Material - 按子模块分割
+            if (id.includes('@mui/material')) {
+              // 将 Dialog 相关组件分离
+              if (id.includes('@mui/material/Dialog') || 
+                  id.includes('@mui/material/DialogTitle') ||
+                  id.includes('@mui/material/DialogContent') ||
+                  id.includes('@mui/material/DialogActions')) {
+                return 'mui-dialog';
+              }
+              // 将 Table 相关组件分离
+              if (id.includes('@mui/material/Table') ||
+                  id.includes('@mui/material/TableContainer') ||
+                  id.includes('@mui/material/TableHead') ||
+                  id.includes('@mui/material/TableBody') ||
+                  id.includes('@mui/material/TableRow') ||
+                  id.includes('@mui/material/TableCell')) {
+                return 'mui-table';
+              }
+              // 将 Select、TextField 等表单组件分离
+              if (id.includes('@mui/material/Select') ||
+                  id.includes('@mui/material/TextField') ||
+                  id.includes('@mui/material/FormControl') ||
+                  id.includes('@mui/material/InputLabel') ||
+                  id.includes('@mui/material/MenuItem')) {
+                return 'mui-form';
+              }
+              // 将 Button、Box、Typography 等基础组件分离
+              if (id.includes('@mui/material/Button') ||
+                  id.includes('@mui/material/Box') ||
+                  id.includes('@mui/material/Typography') ||
+                  id.includes('@mui/material/Paper') ||
+                  id.includes('@mui/material/Container')) {
+                return 'mui-base';
+              }
+              // 将 IconButton、Chip 等交互组件分离
+              if (id.includes('@mui/material/IconButton') ||
+                  id.includes('@mui/material/Chip') ||
+                  id.includes('@mui/material/Collapse') ||
+                  id.includes('@mui/material/Tooltip')) {
+                return 'mui-interactive';
+              }
+              // 将 Radio、Switch、ToggleButton 等选择组件分离
+              if (id.includes('@mui/material/Radio') ||
+                  id.includes('@mui/material/RadioGroup') ||
+                  id.includes('@mui/material/FormControlLabel') ||
+                  id.includes('@mui/material/Switch') ||
+                  id.includes('@mui/material/ToggleButton') ||
+                  id.includes('@mui/material/ToggleButtonGroup')) {
+                return 'mui-selection';
+              }
+              // 将 Select、MenuItem 等菜单组件分离
+              if (id.includes('@mui/material/Menu') ||
+                  id.includes('@mui/material/MenuList') ||
+                  id.includes('@mui/material/MenuItem')) {
+                return 'mui-menu';
+              }
+              // 其他 MUI Material 组件
+              return 'mui-material';
+            }
+            // MUI 图标库
+            if (id.includes('@mui/icons-material')) {
+              return 'mui-icons';
+            }
+            // MUI 其他库（emotion 等）
+            if (id.includes('@mui') || id.includes('@emotion')) {
+              return 'mui-core';
+            }
+            // lightweight-charts 图表库
+            if (id.includes('lightweight-charts')) {
+              return 'charts';
+            }
+            // React 相关
+            if (id.includes('react') || id.includes('react-dom')) {
+              return 'react-vendor';
+            }
+            // 其他 node_modules 依赖
+            return 'vendor';
+          }
+        },
+      },
+    },
   },
   define: {
     'import.meta.env.VITE_APP_VERSION': JSON.stringify(version),
