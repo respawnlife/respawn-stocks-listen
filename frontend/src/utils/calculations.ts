@@ -16,12 +16,24 @@ export function calculateHoldingFromTransactions(
   for (const trans of transactions) {
     const quantity = Number(trans.quantity) || 0;
     const price = Number(trans.price) || 0;
-    if (quantity > 0 && price > 0) {
+    // 支持正数（买入）和负数（卖出）
+    if (quantity !== 0 && price > 0) {
       totalQuantity += quantity;
-      totalCost += quantity * price;
+      // 买入增加成本，卖出减少成本（按平均成本价计算）
+      if (quantity > 0) {
+        // 买入：增加总成本
+        totalCost += quantity * price;
+      } else {
+        // 卖出：按当前平均成本价减少成本（如果已有持仓）
+        const currentAvgPrice = totalQuantity > 0 ? totalCost / totalQuantity : price;
+        totalCost += quantity * currentAvgPrice; // 负数quantity，所以是减少成本
+      }
     }
   }
 
+  // 确保持仓数量不为负数
+  totalQuantity = Math.max(0, totalQuantity);
+  
   const avgPrice = totalQuantity > 0 ? totalCost / totalQuantity : 0.0;
   return [totalQuantity, avgPrice];
 }

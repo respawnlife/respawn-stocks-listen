@@ -359,8 +359,8 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
     }
 
     const quantity = parseFloat(transactionQuantity);
-    if (isNaN(quantity) || quantity <= 0) {
-      setTransactionError('请输入有效的交易数量');
+    if (isNaN(quantity) || quantity === 0) {
+      setTransactionError('请输入有效的交易数量（不能为0）');
       return;
     }
 
@@ -382,15 +382,35 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
       ? existingHolding.transactions 
       : [];
 
+    // 如果是卖出（负数），检查当前持仓是否足够
+    if (quantity < 0) {
+      // 计算当前持仓数量
+      let currentQuantity = 0;
+      for (const trans of existingTransactions) {
+        currentQuantity += Number(trans.quantity) || 0;
+      }
+      
+      // 检查卖出后持仓是否会变成负数
+      const newQuantity = currentQuantity + quantity; // quantity是负数
+      if (newQuantity < 0) {
+        setTransactionError(`持仓不足，当前持仓：${currentQuantity.toFixed(0)}，无法卖出 ${Math.abs(quantity).toFixed(0)}`);
+        return;
+      }
+    }
+
     const newTransaction: Transaction = {
       time: transactionTime,
       quantity: quantity,
       price: price,
     };
 
-    // 计算交易金额（买入减少可用资金）
-    const transactionAmount = quantity * price;
-    const newAvailableFunds = config.funds.available_funds - transactionAmount;
+    // 计算交易金额
+    // 买入（正数）：减少可用资金
+    // 卖出（负数）：增加可用资金
+    const transactionAmount = Math.abs(quantity) * price;
+    const newAvailableFunds = quantity > 0 
+      ? config.funds.available_funds - transactionAmount  // 买入减少资金
+      : config.funds.available_funds + transactionAmount;  // 卖出增加资金
 
     const newConfig = {
       ...config,
@@ -564,7 +584,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
             variant="contained"
             color="secondary"
             size="small"
-            startIcon={<ShoppingCart />}
+            startIcon={<Add />}
             onClick={() => handleOpenTransaction()}
           >交易
           </Button>
@@ -719,8 +739,8 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
                   variant="outlined"
                   value={transactionQuantity}
                   onChange={(e) => setTransactionQuantity(e.target.value)}
-                  inputProps={{ min: 1, step: 1 }}
-                  helperText="输入交易数量（股数）"
+                  inputProps={{ step: 1 }}
+                  helperText="正数为买入，负数为卖出（如：-100表示卖出100股）"
                 />
 
                 <TextField
@@ -878,6 +898,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
             <Typography variant="h6">所有交易记录</Typography>
             <Button
               variant="contained"
+              color="secondary"
               startIcon={<Add />}
               onClick={() => {
                 setOpenHistoryDialog(false);
@@ -885,7 +906,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
               }}
               size="small"
             >
-              增加交易
+              交易
             </Button>
           </Box>
         </DialogTitle>
@@ -1215,7 +1236,8 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
               variant="outlined"
               value={historyEditForm.quantity}
               onChange={(e) => setHistoryEditForm({ ...historyEditForm, quantity: e.target.value })}
-              inputProps={{ min: 1, step: 1 }}
+              inputProps={{ step: 1 }}
+              helperText="正数为买入，负数为卖出"
             />
             <TextField
               label="单价"
@@ -1238,8 +1260,29 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
               const quantity = parseFloat(historyEditForm.quantity);
               const price = parseFloat(historyEditForm.price);
 
-              if (isNaN(quantity) || quantity <= 0 || isNaN(price) || price <= 0 || !historyEditForm.time) {
+              if (isNaN(quantity) || quantity === 0 || isNaN(price) || price <= 0 || !historyEditForm.time) {
                 return;
+              }
+
+              // 如果是卖出（负数），检查修改后的持仓是否足够（仅对当前持仓的交易检查）
+              if (quantity < 0 && !isHistorical) {
+                const holding = newConfig.holdings[code];
+                if (holding) {
+                  const transactions = Array.isArray(holding.transactions) ? holding.transactions : [];
+                  // 计算除了当前编辑交易之外的其他交易的总数量
+                  let otherQuantity = 0;
+                  for (let i = 0; i < transactions.length; i++) {
+                    if (i !== transactionIndex) {
+                      otherQuantity += Number(transactions[i].quantity) || 0;
+                    }
+                  }
+                  // 检查修改后的持仓是否会变成负数
+                  const newQuantity = otherQuantity + quantity; // quantity是负数
+                  if (newQuantity < 0) {
+                    alert(`持仓不足，修改后持仓：${newQuantity.toFixed(0)}，无法卖出 ${Math.abs(quantity).toFixed(0)}`);
+                    return;
+                  }
+                }
               }
 
               const newTransaction: Transaction = {
@@ -1277,9 +1320,13 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
                 if (holding) {
                   const oldTransaction = holding.transactions[transactionIndex];
                   // 计算修改前后的金额差额
-                  const oldAmount = oldTransaction.quantity * oldTransaction.price;
-                  const newAmount = quantity * price;
-                  const amountDiff = oldAmount - newAmount;
+                  // 计算资金变化：买入减少资金，卖出增加资金
+                  // 计算资金变化：买入减少资金，卖出增加资金
+                  const oldAmount = Math.abs(oldTransaction.quantity) * oldTransaction.price;
+                  const newAmount = Math.abs(quantity) * price;
+                  const oldTransactionAmount = oldTransaction.quantity > 0 ? -oldAmount : oldAmount; // 买入为负，卖出为正
+                  const newTransactionAmount = quantity > 0 ? -newAmount : newAmount; // 买入为负，卖出为正
+                  const amountDiff = oldTransactionAmount - newTransactionAmount; // 资金变化量
 
                   const newTransactions = [...holding.transactions];
                   // 保留原有交易的ID
@@ -1352,7 +1399,9 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
                 const holding = config.holdings[code];
                 if (holding) {
                   const transaction = holding.transactions[transactionIndex];
-                  const transactionAmount = transaction.quantity * transaction.price;
+                  // 计算资金变化：买入减少资金，卖出增加资金
+                  const transactionAmount = Math.abs(transaction.quantity) * transaction.price;
+                  const fundsChange = transaction.quantity > 0 ? -transactionAmount : transactionAmount; // 买入为负，卖出为正
 
                   // 如果交易有ID，从 transactions 表中删除
                   if (transaction.id) {
@@ -1362,8 +1411,9 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
                   const newTransactions = [...holding.transactions];
                   newTransactions.splice(transactionIndex, 1);
 
-                  // 删除交易时，退回资金（增加可用资金）
-                  const newAvailableFunds = config.funds.available_funds + transactionAmount;
+                  // 删除交易时，退回资金
+                  // 如果原交易是买入（正数），删除后增加资金；如果原交易是卖出（负数），删除后减少资金
+                  const newAvailableFunds = config.funds.available_funds - fundsChange; // fundsChange已经考虑了买入/卖出的符号
 
                   const newConfig = {
                     ...config,

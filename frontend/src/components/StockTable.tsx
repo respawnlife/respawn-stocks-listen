@@ -31,6 +31,7 @@ import {
 } from '@mui/icons-material';
 import { StockState, Transaction, HoldingsConfig } from '../types';
 import { formatPriceFixed, formatPrice } from '../utils/calculations';
+import { KlineChart } from './KlineChart';
 // saveHoldingsConfig 现在通过 onConfigUpdate 统一处理
 
 interface StockTableProps {
@@ -59,6 +60,10 @@ export const StockTable: React.FC<StockTableProps> = ({ stocks, privacyMode, con
     stockCode: string;
     alertUp: string;
     alertDown: string;
+  } | null>(null);
+  const [klineChartOpen, setKlineChartOpen] = useState<{
+    stockCode: string;
+    stockName: string;
   } | null>(null);
   const [editForm, setEditForm] = useState<{
     time: string;
@@ -133,17 +138,40 @@ export const StockTable: React.FC<StockTableProps> = ({ stocks, privacyMode, con
     const quantity = parseFloat(editForm.quantity);
     const price = parseFloat(editForm.price);
 
-    if (isNaN(quantity) || quantity <= 0 || isNaN(price) || price <= 0 || !editForm.time) {
+    if (isNaN(quantity) || quantity === 0 || isNaN(price) || price <= 0 || !editForm.time) {
       return;
+    }
+
+    // 如果是卖出（负数），检查修改后的持仓是否足够
+    if (quantity < 0) {
+      const holding = config.holdings[stockCode];
+      if (holding) {
+        const transactions = Array.isArray(holding.transactions) ? holding.transactions : [];
+        // 计算除了当前编辑交易之外的其他交易的总数量
+        let otherQuantity = 0;
+        for (let i = 0; i < transactions.length; i++) {
+          if (i !== transactionIndex) {
+            otherQuantity += Number(transactions[i].quantity) || 0;
+          }
+        }
+        // 检查修改后的持仓是否会变成负数
+        const newQuantity = otherQuantity + quantity; // quantity是负数
+        if (newQuantity < 0) {
+          alert(`持仓不足，修改后持仓：${newQuantity.toFixed(0)}，无法卖出 ${Math.abs(quantity).toFixed(0)}`);
+          return;
+        }
+      }
     }
 
     const holding = config.holdings[stockCode];
     if (!holding) return;
 
-    // 计算修改前后的金额差额
-    const oldAmount = oldTransaction.quantity * oldTransaction.price;
-    const newAmount = quantity * price;
-    const amountDiff = oldAmount - newAmount; // 如果新金额更大，差额为负，可用资金减少
+    // 计算资金变化：买入减少资金，卖出增加资金
+    const oldAmount = Math.abs(oldTransaction.quantity) * oldTransaction.price;
+    const newAmount = Math.abs(quantity) * price;
+    const oldTransactionAmount = oldTransaction.quantity > 0 ? -oldAmount : oldAmount; // 买入为负，卖出为正
+    const newTransactionAmount = quantity > 0 ? -newAmount : newAmount; // 买入为负，卖出为正
+    const amountDiff = oldTransactionAmount - newTransactionAmount; // 资金变化量
 
     const newTransactions = [...holding.transactions];
     // 保留原有交易的ID
@@ -475,6 +503,26 @@ export const StockTable: React.FC<StockTableProps> = ({ stocks, privacyMode, con
                       <Button
                         size="small"
                         onClick={() => {
+                          setKlineChartOpen({
+                            stockCode: stock.code,
+                            stockName: stock.name,
+                          });
+                        }}
+                        sx={{
+                          color: '#9c27b0',
+                          textTransform: 'none',
+                          minWidth: 'auto',
+                          padding: '4px 4px',
+                        }}
+                      >
+                        K图
+                      </Button>
+                      <Typography component="span" sx={{ color: 'text.secondary', fontSize: '0.875rem', mx: 0 }}>
+                        |
+                      </Typography>
+                      <Button
+                        size="small"
+                        onClick={() => {
                           const holding = config.holdings[stock.code];
                           const watchlistItem = config.watchlist[stock.code];
                           const currentAlertUp = holding?.alert_up ?? watchlistItem?.alert_up ?? null;
@@ -531,14 +579,14 @@ export const StockTable: React.FC<StockTableProps> = ({ stocks, privacyMode, con
                             }}
                             sx={{
                               textTransform: 'none',
-                              color: '#1976d2',
+                              color: '#9c27b0',
                               '&:hover': {
                                 backgroundColor: 'transparent',
                                 textDecoration: 'underline',
                               },
                             }}
                           >
-                            增加交易
+                            交易
                           </Button>
                         </Box>
                         {stock.transactions && stock.transactions.length > 0 ? (
@@ -651,7 +699,8 @@ export const StockTable: React.FC<StockTableProps> = ({ stocks, privacyMode, con
               variant="outlined"
               value={editForm.quantity}
               onChange={(e) => setEditForm({ ...editForm, quantity: e.target.value })}
-              inputProps={{ min: 1, step: 1 }}
+              inputProps={{ step: 1 }}
+              helperText="正数为买入，负数为卖出"
             />
             <TextField
               label="单价"
@@ -777,6 +826,16 @@ export const StockTable: React.FC<StockTableProps> = ({ stocks, privacyMode, con
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* K线图对话框 */}
+      {klineChartOpen && (
+        <KlineChart
+          open={!!klineChartOpen}
+          onClose={() => setKlineChartOpen(null)}
+          stockCode={klineChartOpen.stockCode}
+          stockName={klineChartOpen.stockName}
+        />
+      )}
     </TableContainer>
   );
 };
