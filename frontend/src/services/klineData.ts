@@ -19,7 +19,7 @@ export type KlinePeriod = 'day' | 'week' | 'month';
 
 /**
  * 使用腾讯财经API获取K线数据
- * API格式：http://web.ifzq.gtimg.cn/app/kline/kline?param=sh600000,day,1,0,1000,640,qfq
+ * API格式：https://web.ifzq.gtimg.cn/app/kline/kline?param=sh600000,day,1,0,1000,640,qfq
  * 参数说明：
  * - sh600000: 股票代码（带前缀）
  * - day: 周期（day/week/month）
@@ -222,8 +222,8 @@ async function getKlineDataAlternative(
       periodParam = 'day'; // 默认日K
     }
     
-    // 腾讯K线API: http://web.ifzq.gtimg.cn/app/kline/kline?param=sz002255,day,1,0,250,640,qfq
-    const url = `http://web.ifzq.gtimg.cn/app/kline/kline?param=${formattedCode},${periodParam},1,0,${actualCount},640,qfq&_=${Date.now()}`;
+    // 腾讯K线API: https://web.ifzq.gtimg.cn/app/kline/kline?param=sz002255,day,1,0,250,640,qfq
+    const url = `https://web.ifzq.gtimg.cn/app/kline/kline?param=${formattedCode},${periodParam},1,0,${actualCount},640,qfq&_=${Date.now()}`;
     
     console.log(`[K线数据] 腾讯财经API请求URL: ${url}`);
     

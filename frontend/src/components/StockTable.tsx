@@ -23,11 +23,14 @@ import {
   FormControlLabel,
   FormControl,
   FormLabel,
+  Select,
+  MenuItem,
 } from '@mui/material';
 import {
   Edit,
   Delete,
   Add,
+  Remove,
 } from '@mui/icons-material';
 import { StockState, Transaction, HoldingsConfig } from '../types';
 import { formatPriceFixed, formatPrice } from '../utils/calculations';
@@ -58,8 +61,7 @@ export const StockTable: React.FC<StockTableProps> = ({ stocks, privacyMode, con
   const [deleteOption, setDeleteOption] = useState<'refund' | 'keep'>('refund');
   const [editingAlert, setEditingAlert] = useState<{
     stockCode: string;
-    alertUp: string;
-    alertDown: string;
+    alerts: Array<{ type: 'up' | 'down'; price: string }>;
   } | null>(null);
   const [klineChartOpen, setKlineChartOpen] = useState<{
     stockCode: string;
@@ -259,16 +261,18 @@ export const StockTable: React.FC<StockTableProps> = ({ stocks, privacyMode, con
   const handleSaveAlert = () => {
     if (!editingAlert) return;
 
-    const { stockCode, alertUp, alertDown } = editingAlert;
-    const alertUpValue = alertUp.trim() === '' ? null : parseFloat(alertUp);
-    const alertDownValue = alertDown.trim() === '' ? null : parseFloat(alertDown);
-
-    // 验证输入
-    if (alertUp !== '' && (isNaN(alertUpValue!) || alertUpValue! <= 0)) {
-      return;
-    }
-    if (alertDown !== '' && (isNaN(alertDownValue!) || alertDownValue! <= 0)) {
-      return;
+    const { stockCode, alerts } = editingAlert;
+    
+    // 验证并转换报警规则
+    const validAlerts: Array<{ type: 'up' | 'down'; price: number }> = [];
+    for (const alert of alerts) {
+      const price = parseFloat(alert.price.trim());
+      if (!isNaN(price) && price > 0) {
+        validAlerts.push({
+          type: alert.type,
+          price: price,
+        });
+      }
     }
 
     const newConfig = { 
@@ -282,21 +286,18 @@ export const StockTable: React.FC<StockTableProps> = ({ stocks, privacyMode, con
       // 是持仓，更新持仓的报警配置
       newConfig.holdings[stockCode] = {
         ...newConfig.holdings[stockCode],
-        alert_up: alertUpValue,
-        alert_down: alertDownValue,
+        alerts: validAlerts.length > 0 ? validAlerts : undefined,
       };
     } else if (newConfig.watchlist[stockCode]) {
       // 是自选，更新自选的报警配置
       newConfig.watchlist[stockCode] = {
         ...newConfig.watchlist[stockCode],
-        alert_up: alertUpValue,
-        alert_down: alertDownValue,
+        alerts: validAlerts.length > 0 ? validAlerts : undefined,
       };
     } else {
       // 既不在持仓也不在自选，添加到自选
       newConfig.watchlist[stockCode] = {
-        alert_up: alertUpValue,
-        alert_down: alertDownValue,
+        alerts: validAlerts.length > 0 ? validAlerts : undefined,
       };
     }
 
@@ -349,8 +350,9 @@ export const StockTable: React.FC<StockTableProps> = ({ stocks, privacyMode, con
       if (!newWatchlist[stockCode]) {
         const holding = config.holdings[stockCode];
         newWatchlist[stockCode] = {
-          alert_up: holding?.alert_up || null,
-          alert_down: holding?.alert_down || null,
+          alerts: holding?.alerts,
+          alert_up: holding?.alert_up || null, // 向后兼容
+          alert_down: holding?.alert_down || null, // 向后兼容
         };
       }
     }
@@ -735,35 +737,71 @@ export const StockTable: React.FC<StockTableProps> = ({ stocks, privacyMode, con
       </Dialog>
 
       {/* 报警配置对话框 */}
-      <Dialog open={!!editingAlert} onClose={() => setEditingAlert(null)} maxWidth="xs" fullWidth>
+      <Dialog open={!!editingAlert} onClose={() => setEditingAlert(null)} maxWidth="sm" fullWidth>
         <DialogTitle sx={{ pb: 1 }}>报警配置</DialogTitle>
         <DialogContent sx={{ pt: 1 }}>
           {editingAlert && (
             <>
               <Typography variant="body2" sx={{ mb: 1.5, color: 'text.secondary' }}>
-                股票代码: {editingAlert.stockCode}
+                设置价格报警规则，当股价达到设定价格时会发出提醒。可以添加多条规则。
               </Typography>
-              <TextField
-                label="上涨报警价格"
-                type="number"
+              {editingAlert.alerts.map((alert, index) => (
+                <Box key={index} sx={{ display: 'flex', gap: 1, mb: 2, alignItems: 'center' }}>
+                  <FormControl size="small" sx={{ minWidth: 100 }}>
+                    <Select
+                      value={alert.type}
+                      onChange={(e) => {
+                        const newAlerts = [...editingAlert.alerts];
+                        newAlerts[index].type = e.target.value as 'up' | 'down';
+                        setEditingAlert({ ...editingAlert, alerts: newAlerts });
+                      }}
+                    >
+                      <MenuItem value="up">上涨</MenuItem>
+                      <MenuItem value="down">下跌</MenuItem>
+                    </Select>
+                  </FormControl>
+                  <TextField
+                    label="金额"
+                    type="number"
+                    size="small"
+                    fullWidth
+                    value={alert.price}
+                    onChange={(e) => {
+                      const newAlerts = [...editingAlert.alerts];
+                      newAlerts[index].price = e.target.value;
+                      setEditingAlert({ ...editingAlert, alerts: newAlerts });
+                    }}
+                    placeholder="报警价格"
+                    inputProps={{ step: '0.01', min: '0' }}
+                  />
+                  <IconButton
+                    size="small"
+                    onClick={() => {
+                      const newAlerts = editingAlert.alerts.filter((_, i) => i !== index);
+                      if (newAlerts.length === 0) {
+                        newAlerts.push({ type: 'up', price: '' });
+                      }
+                      setEditingAlert({ ...editingAlert, alerts: newAlerts });
+                    }}
+                    color="error"
+                  >
+                    <Remove />
+                  </IconButton>
+                </Box>
+              ))}
+              <Button
                 size="small"
-                fullWidth
-                value={editingAlert.alertUp}
-                onChange={(e) => setEditingAlert({ ...editingAlert, alertUp: e.target.value })}
-                placeholder="留空表示不设置"
-                sx={{ mb: 2 }}
-                inputProps={{ step: '0.01', min: '0' }}
-              />
-              <TextField
-                label="下跌报警价格"
-                type="number"
-                size="small"
-                fullWidth
-                value={editingAlert.alertDown}
-                onChange={(e) => setEditingAlert({ ...editingAlert, alertDown: e.target.value })}
-                placeholder="留空表示不设置"
-                inputProps={{ step: '0.01', min: '0' }}
-              />
+                startIcon={<Add />}
+                onClick={() => {
+                  setEditingAlert({
+                    ...editingAlert,
+                    alerts: [...editingAlert.alerts, { type: 'up', price: '' }],
+                  });
+                }}
+                sx={{ mt: 1 }}
+              >
+                添加规则
+              </Button>
             </>
           )}
         </DialogContent>

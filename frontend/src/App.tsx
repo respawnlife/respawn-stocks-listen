@@ -103,10 +103,10 @@ function App() {
           holding_price: holdingQuantity > 0 ? holdingPrice : null,
           holding_quantity: holdingQuantity,
           transactions: transactions,
-          alert_up: holdingConfig.alert_up,
-          alert_down: holdingConfig.alert_down,
-          alert_triggered_up: existingState?.alert_triggered_up ?? false,
-          alert_triggered_down: existingState?.alert_triggered_down ?? false,
+          alerts: holdingConfig.alerts,
+          alert_up: holdingConfig.alert_up, // 向后兼容
+          alert_down: holdingConfig.alert_down, // 向后兼容
+          alert_triggered: existingState?.alert_triggered ?? new Set(),
         });
       }
       
@@ -129,10 +129,10 @@ function App() {
           holding_price: null,
           holding_quantity: 0,
           transactions: [],
-          alert_up: watchlistConfig.alert_up,
-          alert_down: watchlistConfig.alert_down,
-          alert_triggered_up: existingState?.alert_triggered_up ?? false,
-          alert_triggered_down: existingState?.alert_triggered_down ?? false,
+          alerts: watchlistConfig.alerts,
+          alert_up: watchlistConfig.alert_up, // 向后兼容
+          alert_down: watchlistConfig.alert_down, // 向后兼容
+          alert_triggered: existingState?.alert_triggered ?? new Set(),
         });
       }
 
@@ -190,12 +190,14 @@ function App() {
                   : 0.0;
 
               // 检查报警
-              const [triggeredUp, triggeredDown] = checkPriceAlert(code, data.price, state);
-              if (triggeredUp || triggeredDown) {
+              const triggeredAlerts = checkPriceAlert(code, data.price, state);
+              if (triggeredAlerts.length > 0) {
                 playAlertSound();
-                const message = triggeredUp
-                  ? `${data.name}(${code}) 价格上升至 ${data.price.toFixed(2)}，达到报警价格 ${state.alert_up}`
-                  : `${data.name}(${code}) 价格下跌至 ${data.price.toFixed(2)}，达到报警价格 ${state.alert_down}`;
+                const messages = triggeredAlerts.map(alert => {
+                  const typeText = alert.type === 'up' ? '上涨' : '下跌';
+                  return `${data.name}(${code}) 价格${typeText}至 ${data.price.toFixed(2)}，达到报警价格 ${alert.price.toFixed(2)}`;
+                });
+                const message = messages.join('；');
                 setAlertMessage(message);
                 showNotification('股票报警', message);
               }
@@ -286,12 +288,14 @@ function App() {
                     : 0.0;
 
                 // 检查报警
-                const [triggeredUp, triggeredDown] = checkPriceAlert(code, data.price, state);
-                if (triggeredUp || triggeredDown) {
+                const triggeredAlerts = checkPriceAlert(code, data.price, state);
+                if (triggeredAlerts.length > 0) {
                   playAlertSound();
-                  const message = triggeredUp
-                    ? `${data.name}(${code}) 价格上升至 ${data.price.toFixed(2)}，达到报警价格 ${state.alert_up}`
-                    : `${data.name}(${code}) 价格下跌至 ${data.price.toFixed(2)}，达到报警价格 ${state.alert_down}`;
+                  const messages = triggeredAlerts.map(alert => {
+                    const typeText = alert.type === 'up' ? '上涨' : '下跌';
+                    return `${data.name}(${code}) 价格${typeText}至 ${data.price.toFixed(2)}，达到报警价格 ${alert.price.toFixed(2)}`;
+                  });
+                  const message = messages.join('；');
                   setAlertMessage(message);
                   showNotification('股票报警', message);
                 }

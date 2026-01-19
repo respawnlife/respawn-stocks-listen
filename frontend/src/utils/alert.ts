@@ -1,52 +1,93 @@
-import { StockState } from '../types';
+import { StockState, AlertRule } from '../types';
 
 /**
  * 检查价格是否触发报警
+ * 返回触发报警的规则数组
  */
 export function checkPriceAlert(
   stockCode: string,
   currentPrice: number,
   stockState: StockState
-): [boolean, boolean] {
-  const alertUp = stockState.alert_up;
-  const alertDown = stockState.alert_down;
+): AlertRule[] {
+  const triggeredAlerts: AlertRule[] = [];
+  
+  // 初始化alert_triggered Set
+  if (!stockState.alert_triggered) {
+    stockState.alert_triggered = new Set();
+  }
 
-  let triggeredUp = false;
-  let triggeredDown = false;
-
-  // 检查上升报警：当前价格 >= 报警价格
-  if (alertUp !== null && currentPrice >= alertUp) {
+  // 优先使用新的alerts数组
+  if (stockState.alerts && stockState.alerts.length > 0) {
     const lastPrice = stockState.last_price;
-    if (
-      !stockState.alert_triggered_up ||
-      (lastPrice !== null && lastPrice < alertUp)
-    ) {
-      triggeredUp = true;
-      stockState.alert_triggered_up = true;
+    
+    for (const alert of stockState.alerts) {
+      const alertKey = `${alert.type}-${alert.price}`;
+      let shouldTrigger = false;
+
+      if (alert.type === 'up') {
+        // 上涨报警：当前价格 >= 报警价格
+        if (currentPrice >= alert.price) {
+          // 如果之前没有触发过，或者价格从低于报警价格变为高于等于报警价格
+          if (!stockState.alert_triggered.has(alertKey) || 
+              (lastPrice !== null && lastPrice < alert.price)) {
+            shouldTrigger = true;
+            stockState.alert_triggered.add(alertKey);
+          }
+        } else {
+          // 价格回到正常范围，移除触发标记（允许再次报警）
+          stockState.alert_triggered.delete(alertKey);
+        }
+      } else if (alert.type === 'down') {
+        // 下跌报警：当前价格 <= 报警价格
+        if (currentPrice <= alert.price) {
+          // 如果之前没有触发过，或者价格从高于报警价格变为低于等于报警价格
+          if (!stockState.alert_triggered.has(alertKey) || 
+              (lastPrice !== null && lastPrice > alert.price)) {
+            shouldTrigger = true;
+            stockState.alert_triggered.add(alertKey);
+          }
+        } else {
+          // 价格回到正常范围，移除触发标记（允许再次报警）
+          stockState.alert_triggered.delete(alertKey);
+        }
+      }
+
+      if (shouldTrigger) {
+        triggeredAlerts.push(alert);
+      }
+    }
+  } else {
+    // 向后兼容：使用旧的alert_up/alert_down
+    const alertUp = stockState.alert_up;
+    const alertDown = stockState.alert_down;
+    const lastPrice = stockState.last_price;
+
+    // 检查上升报警
+    if (alertUp !== null && currentPrice >= alertUp) {
+      const alertKey = `up-${alertUp}`;
+      if (!stockState.alert_triggered.has(alertKey) || 
+          (lastPrice !== null && lastPrice < alertUp)) {
+        triggeredAlerts.push({ type: 'up', price: alertUp });
+        stockState.alert_triggered.add(alertKey);
+      }
+    } else if (alertUp !== null && currentPrice < alertUp) {
+      stockState.alert_triggered.delete(`up-${alertUp}`);
+    }
+
+    // 检查下跌报警
+    if (alertDown !== null && currentPrice <= alertDown) {
+      const alertKey = `down-${alertDown}`;
+      if (!stockState.alert_triggered.has(alertKey) || 
+          (lastPrice !== null && lastPrice > alertDown)) {
+        triggeredAlerts.push({ type: 'down', price: alertDown });
+        stockState.alert_triggered.add(alertKey);
+      }
+    } else if (alertDown !== null && currentPrice > alertDown) {
+      stockState.alert_triggered.delete(`down-${alertDown}`);
     }
   }
 
-  // 检查下跌报警：当前价格 <= 报警价格
-  if (alertDown !== null && currentPrice <= alertDown) {
-    const lastPrice = stockState.last_price;
-    if (
-      !stockState.alert_triggered_down ||
-      (lastPrice !== null && lastPrice > alertDown)
-    ) {
-      triggeredDown = true;
-      stockState.alert_triggered_down = true;
-    }
-  }
-
-  // 如果价格回到正常范围，重置报警标记（允许再次报警）
-  if (alertUp !== null && currentPrice < alertUp) {
-    stockState.alert_triggered_up = false;
-  }
-  if (alertDown !== null && currentPrice > alertDown) {
-    stockState.alert_triggered_down = false;
-  }
-
-  return [triggeredUp, triggeredDown];
+  return triggeredAlerts;
 }
 
 /**

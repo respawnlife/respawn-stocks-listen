@@ -6,17 +6,27 @@ export interface Transaction {
   price: number;
 }
 
+// 报警规则
+export interface AlertRule {
+  type: 'up' | 'down'; // 上涨或下跌
+  price: number; // 报警价格
+}
+
 // 持仓配置（有交易记录的股票）
 export interface HoldingConfig {
   transactions: Transaction[];
-  alert_up: number | null;
-  alert_down: number | null;
+  alerts?: AlertRule[]; // 报警规则数组
+  // 向后兼容：保留旧的字段
+  alert_up?: number | null;
+  alert_down?: number | null;
 }
 
 // 自选股配置（仅监控，无持仓）
 export interface WatchlistConfig {
-  alert_up: number | null;
-  alert_down: number | null;
+  alerts?: AlertRule[]; // 报警规则数组
+  // 向后兼容：保留旧的字段
+  alert_up?: number | null;
+  alert_down?: number | null;
 }
 
 // 历史交易数据（已删除但保留交易的股票）
@@ -68,10 +78,11 @@ export interface StockState {
   holding_price: number | null;
   holding_quantity: number;
   transactions: Transaction[];
-  alert_up: number | null;
-  alert_down: number | null;
-  alert_triggered_up: boolean;
-  alert_triggered_down: boolean;
+  alerts?: AlertRule[]; // 报警规则数组
+  // 向后兼容：保留旧的字段
+  alert_up?: number | null;
+  alert_down?: number | null;
+  alert_triggered?: Set<string>; // 已触发的报警规则ID集合（使用 type-price 作为key）
 }
 
 // 股票实时数据
