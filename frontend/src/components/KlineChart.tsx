@@ -27,7 +27,6 @@ interface KlineChartProps {
 }
 
 export const KlineChart: React.FC<KlineChartProps> = ({ open, onClose, stockCode, stockName }) => {
-  console.log('[K线图] 组件渲染，open:', open, 'stockCode:', stockCode, 'stockName:', stockName);
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candlestickSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
@@ -49,9 +48,7 @@ export const KlineChart: React.FC<KlineChartProps> = ({ open, onClose, stockCode
   const loadTransactions = React.useCallback(async () => {
     try {
       const codeWithoutPrefix = stockCode.replace(/^(sh|sz)/, '');
-      console.log('[K线图] 开始加载交易数据，股票代码:', codeWithoutPrefix);
       const transactions = await loadTransactionsByCode(codeWithoutPrefix);
-      console.log('[K线图] 加载到的交易数据:', transactions.length, '条', transactions.map(t => ({ time: t.time, quantity: t.quantity })));
       setTransactions(transactions.map(t => ({
         id: t.id,
         time: t.time,
@@ -59,7 +56,6 @@ export const KlineChart: React.FC<KlineChartProps> = ({ open, onClose, stockCode
         price: t.price,
       })));
     } catch (err) {
-      console.error('[K线图] 加载交易数据失败:', err);
       setTransactions([]);
     }
   }, [stockCode]);
@@ -145,7 +141,7 @@ export const KlineChart: React.FC<KlineChartProps> = ({ open, onClose, stockCode
         title: '均价',
       });
     } catch (err) {
-      console.error('[K线图] 添加价格区间线失败:', err);
+      // 忽略价格区间线添加失败
     }
   }, [showPriceRange]);
 
@@ -164,7 +160,6 @@ export const KlineChart: React.FC<KlineChartProps> = ({ open, onClose, stockCode
       // 解析日期，确保格式正确
       const transDate = new Date(dateStr + 'T00:00:00'); // 添加时间部分避免时区问题
       if (isNaN(transDate.getTime())) {
-        console.warn('[K线图] 无法解析交易日期:', trans.time);
         return;
       }
       
@@ -208,19 +203,15 @@ export const KlineChart: React.FC<KlineChartProps> = ({ open, onClose, stockCode
   // 加载K线数据的函数
   const loadKlineData = React.useCallback(async () => {
     if (!chartRef.current || !candlestickSeriesRef.current) {
-      console.log('[K线图] 图表未初始化，无法加载数据');
       return;
     }
 
-    console.log(`[K线图] loadKlineData函数开始执行，stockCode: ${stockCode}, period: ${period}`);
     setLoading(true);
     setError(null);
 
         try {
-          console.log(`[K线图] 开始加载 ${stockCode} 的 ${period} 数据（最多一年）`);
           // 不指定count，让函数自动计算一年的数据量
           const data = await getKlineData(stockCode, period);
-      console.log(`[K线图] 获取到 ${data.length} 条数据`, data.slice(0, 3));
 
       if (data.length === 0) {
         setError('暂无数据，请检查网络连接或稍后重试');
@@ -257,22 +248,12 @@ export const KlineChart: React.FC<KlineChartProps> = ({ open, onClose, stockCode
             const timeB = typeof b.time === 'string' ? new Date(b.time).getTime() : b.time;
             return timeA - timeB;
           });
-        
-        // 打印前几条数据用于调试
-        if (chartData.length > 0) {
-          console.log('[K线图] K线数据示例（前3条）:', chartData.slice(0, 3).map(d => ({ time: d.time, timeType: typeof d.time })));
-        }
-        
-        console.log(`[K线图] 转换后保留 ${chartData.length} 条数据`);
-
-        console.log(`[K线图] 转换后的图表数据:`, chartData.slice(0, 3));
 
         // 保存chartData供后续使用
         chartDataRef.current = chartData;
 
       // 聚合交易数据
       const transactionsByPeriod = aggregateTransactionsByPeriod(transactions, period);
-      console.log('[K线图] 交易数据聚合结果（周期键 -> 交易数）:', Array.from(transactionsByPeriod.entries()).map(([k, v]) => `${k}: ${v.length}条`));
       
       // 准备markers数据
       const markers: SeriesMarker<Time>[] = [];
@@ -298,16 +279,12 @@ export const KlineChart: React.FC<KlineChartProps> = ({ open, onClose, stockCode
         
         const dayTransactions = transactionsByPeriod.get(periodKey) || [];
         if (dayTransactions.length > 0) {
-          console.log(`[K线图] 匹配到交易: K线日期=${dateStr}, 周期键=${periodKey}, 交易数=${dayTransactions.length}`);
           const totalQuantity = dayTransactions.reduce((sum, t) => sum + t.quantity, 0);
           transactionMap.set(dateStr, dayTransactions);
           
           // 不创建marker，只用HTML badge显示（marker会显示圆形图标，我们不需要）
         }
       });
-      
-      console.log('[K线图] 生成的markers数量:', markers.length);
-      console.log('[K线图] transactionMap大小:', transactionMap.size);
 
       // 更新图表数据
       if (candlestickSeriesRef.current && chartRef.current) {
@@ -385,7 +362,6 @@ export const KlineChart: React.FC<KlineChartProps> = ({ open, onClose, stockCode
           markersPluginRef.current = null;
         }
         chartRef.current.timeScale().fitContent();
-        console.log('[K线图] 图表数据已更新，周期:', period, '数据量:', chartData.length, '标记数:', markers.length);
         
         // 保存交易映射供tooltip使用
         (chartRef.current as any)._transactionMap = transactionMap;
@@ -408,13 +384,11 @@ export const KlineChart: React.FC<KlineChartProps> = ({ open, onClose, stockCode
           }, 100);
         }
       } else {
-        console.error('[K线图] 图表引用不存在');
         setError('图表初始化失败');
       }
 
       setLoading(false);
     } catch (err) {
-      console.error('[K线图] 加载K线数据失败:', err);
       setError(`加载数据失败: ${err instanceof Error ? err.message : '未知错误'}`);
       setLoading(false);
     }
@@ -462,7 +436,6 @@ export const KlineChart: React.FC<KlineChartProps> = ({ open, onClose, stockCode
       try {
         pricePoint = series.priceToCoordinate(chartDataItem.high);
       } catch (e) {
-        console.error('[K线图] 计算价格坐标失败:', e);
         return;
       }
 
@@ -547,9 +520,8 @@ export const KlineChart: React.FC<KlineChartProps> = ({ open, onClose, stockCode
           axisLabelVisible: true,
           title: '持仓价',
         });
-        console.log('[K线图] ✅ 已添加持仓价格线，价格:', holdingPrice);
       } catch (err) {
-        console.error('[K线图] ❌ 添加持仓价格线失败:', err);
+        // 忽略持仓价格线添加失败
       }
     }
   };
@@ -580,11 +552,9 @@ export const KlineChart: React.FC<KlineChartProps> = ({ open, onClose, stockCode
     // 等待Dialog完全打开，DOM元素挂载完成
     const timer = setTimeout(() => {
       if (!chartContainerRef.current) {
-        console.error('[K线图] chartContainerRef.current 仍然为null');
         return;
       }
 
-      console.log('[K线图] 开始创建图表');
       // 创建图表
       const chart = createChart(chartContainerRef.current, {
         layout: {
@@ -629,8 +599,6 @@ export const KlineChart: React.FC<KlineChartProps> = ({ open, onClose, stockCode
 
       candlestickSeriesRef.current = candlestickSeries;
       
-      console.log('[K线图] 图表和系列创建完成，chartRef:', !!chartRef.current, 'candlestickSeriesRef:', !!candlestickSeriesRef.current);
-      
       // 订阅crosshair移动事件，显示自定义tooltip
       chart.subscribeCrosshairMove((param) => {
         if (!param.time || !param.point) {
@@ -672,7 +640,6 @@ export const KlineChart: React.FC<KlineChartProps> = ({ open, onClose, stockCode
         // 从transactionMap中查找交易数据（使用dateStr作为key）
         const dayTransactions = transactionMap.get(dateStr) || [];
         if (dayTransactions.length > 0) {
-          console.log(`[K线图] Tooltip: 找到交易数据，日期=${dateStr}, 交易数=${dayTransactions.length}`);
           // 计算tooltip位置（跟随鼠标）
           // param.point是相对于图表的坐标，需要转换为相对于容器的坐标
           if (!chartContainerRef.current) {
@@ -773,15 +740,12 @@ export const KlineChart: React.FC<KlineChartProps> = ({ open, onClose, stockCode
 
   // 当周期改变时，重新加载数据
   useEffect(() => {
-    console.log('[K线图] 周期改变useEffect执行，period:', period, 'open:', open, 'chartRef:', !!chartRef.current, 'candlestickSeriesRef:', !!candlestickSeriesRef.current);
     if (!open || !chartRef.current || !candlestickSeriesRef.current) {
-      console.log('[K线图] 周期改变但条件不满足，退出');
       return;
     }
 
     // 延迟一下，确保图表已经完全初始化
     const timer = setTimeout(() => {
-      console.log('[K线图] 周期改变，重新加载数据');
       loadKlineData();
     }, 100);
 

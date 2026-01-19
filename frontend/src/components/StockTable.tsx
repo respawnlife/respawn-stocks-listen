@@ -536,12 +536,40 @@ export const StockTable: React.FC<StockTableProps> = ({ stocks, privacyMode, con
                         onClick={() => {
                           const holding = config.holdings[stock.code];
                           const watchlistItem = config.watchlist[stock.code];
-                          const currentAlertUp = holding?.alert_up ?? watchlistItem?.alert_up ?? null;
-                          const currentAlertDown = holding?.alert_down ?? watchlistItem?.alert_down ?? null;
+                          
+                          // 从 alerts 数组或 alert_up/alert_down 构建报警规则
+                          const alerts: Array<{ type: 'up' | 'down'; price: string }> = [];
+                          
+                          // 优先使用 alerts 数组
+                          if (holding?.alerts && holding.alerts.length > 0) {
+                            holding.alerts.forEach(alert => {
+                              alerts.push({ type: alert.type, price: alert.price.toString() });
+                            });
+                          } else if (watchlistItem?.alerts && watchlistItem.alerts.length > 0) {
+                            watchlistItem.alerts.forEach(alert => {
+                              alerts.push({ type: alert.type, price: alert.price.toString() });
+                            });
+                          } else {
+                            // 如果没有 alerts 数组，从 alert_up/alert_down 转换
+                            const currentAlertUp = holding?.alert_up ?? watchlistItem?.alert_up ?? null;
+                            const currentAlertDown = holding?.alert_down ?? watchlistItem?.alert_down ?? null;
+                            
+                            if (currentAlertUp !== null) {
+                              alerts.push({ type: 'up', price: currentAlertUp.toString() });
+                            }
+                            if (currentAlertDown !== null) {
+                              alerts.push({ type: 'down', price: currentAlertDown.toString() });
+                            }
+                          }
+                          
+                          // 如果没有任何报警规则，至少添加一个空的
+                          if (alerts.length === 0) {
+                            alerts.push({ type: 'up', price: '' });
+                          }
+                          
                           setEditingAlert({
                             stockCode: stock.code,
-                            alertUp: currentAlertUp !== null ? currentAlertUp.toString() : '',
-                            alertDown: currentAlertDown !== null ? currentAlertDown.toString() : '',
+                            alerts: alerts,
                           });
                         }}
                         sx={{
