@@ -56,7 +56,7 @@ export async function getKlineData(
   const daysToShow = periodConfig.days;
   try {
     // 使用东方财富API（更可靠，支持CORS）
-    // API格式：http://push2his.eastmoney.com/api/qt/stock/kline/get?secid=1.600000&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58&klt=101&fqt=1&beg=0&end=20500000
+    // API格式：https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=1.600000&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58&klt=101&fqt=1&beg=0&end=20500000
     // secid格式：1.600000 (1=上海，0=深圳) 或 0.002255
     
     // 处理股票代码格式
@@ -89,7 +89,7 @@ export async function getKlineData(
     
     // 东方财富API参数：不使用时间戳，使用默认参数
     // beg=0表示从最早开始，end=20500000表示到未来（实际会返回到当前）
-    const url = `http://push2his.eastmoney.com/api/qt/stock/kline/get?secid=${secid}&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58&klt=${klt}&fqt=1&beg=0&end=20500000&lmt=${actualCount}`;
+    const url = `https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=${secid}&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58&klt=${klt}&fqt=1&beg=0&end=20500000&lmt=${actualCount}`;
     
     console.log(`[K线数据] 请求URL: ${url}`);
     
