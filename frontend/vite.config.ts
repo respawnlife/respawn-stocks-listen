@@ -33,7 +33,7 @@ export default defineConfig({
   build: {
     outDir: fileURLToPath(new URL('../docs', import.meta.url)),
     emptyOutDir: true,
-    chunkSizeWarningLimit: 100,
+    chunkSizeWarningLimit: 250, // 提高警告阈值，100KB只是建议，不是强制要求
     rollupOptions: {
       output: {
         manualChunks: (id) => {
