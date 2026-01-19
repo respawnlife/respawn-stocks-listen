@@ -70,8 +70,8 @@ export const StockTable: React.FC<StockTableProps> = ({ stocks, privacyMode, con
   const [editForm, setEditForm] = useState<{
     time: string;
     quantity: string;
-    price: string;
-  }>({ time: '', quantity: '', price: '' });
+    totalAmount: string;
+  }>({ time: '', quantity: '', totalAmount: '' });
   const formatPrivacyValue = (value: any): string => {
     if (privacyMode) {
       return '***';
@@ -126,10 +126,12 @@ export const StockTable: React.FC<StockTableProps> = ({ stocks, privacyMode, con
 
   const handleEditTransaction = (stockCode: string, index: number, transaction: Transaction) => {
     setEditingTransaction({ stockCode, index, transaction });
+    // 如果有总金额，使用总金额；否则使用 price * |quantity|
+    const totalAmount = transaction.totalAmount ?? (Math.abs(transaction.quantity) * transaction.price);
     setEditForm({
       time: transaction.time,
       quantity: transaction.quantity.toString(),
-      price: transaction.price.toString(),
+      totalAmount: totalAmount.toString(),
     });
   };
 
@@ -138,11 +140,14 @@ export const StockTable: React.FC<StockTableProps> = ({ stocks, privacyMode, con
 
     const { stockCode, index, transaction: oldTransaction } = editingTransaction;
     const quantity = parseFloat(editForm.quantity);
-    const price = parseFloat(editForm.price);
+    const totalAmount = parseFloat(editForm.totalAmount);
 
-    if (isNaN(quantity) || quantity === 0 || isNaN(price) || price <= 0 || !editForm.time) {
+    if (isNaN(quantity) || quantity === 0 || isNaN(totalAmount) || totalAmount <= 0 || !editForm.time) {
       return;
     }
+
+    // 自动计算单价：总金额 / |数量|
+    const price = totalAmount / Math.abs(quantity);
 
     // 如果是卖出（负数），检查修改后的持仓是否足够
     if (quantity < 0) {
@@ -169,10 +174,9 @@ export const StockTable: React.FC<StockTableProps> = ({ stocks, privacyMode, con
     if (!holding) return;
 
     // 计算资金变化：买入减少资金，卖出增加资金
-    const oldAmount = Math.abs(oldTransaction.quantity) * oldTransaction.price;
-    const newAmount = Math.abs(quantity) * price;
-    const oldTransactionAmount = oldTransaction.quantity > 0 ? -oldAmount : oldAmount; // 买入为负，卖出为正
-    const newTransactionAmount = quantity > 0 ? -newAmount : newAmount; // 买入为负，卖出为正
+    const oldTotalAmount = oldTransaction.totalAmount ?? (Math.abs(oldTransaction.quantity) * oldTransaction.price);
+    const oldTransactionAmount = oldTransaction.quantity > 0 ? -oldTotalAmount : oldTotalAmount; // 买入为负，卖出为正
+    const newTransactionAmount = quantity > 0 ? -totalAmount : totalAmount; // 买入为负，卖出为正
     const amountDiff = oldTransactionAmount - newTransactionAmount; // 资金变化量
 
     const newTransactions = [...holding.transactions];
@@ -182,6 +186,7 @@ export const StockTable: React.FC<StockTableProps> = ({ stocks, privacyMode, con
       time: editForm.time,
       quantity: quantity,
       price: price,
+      totalAmount: totalAmount,
     };
 
     // 更新可用资金
@@ -204,7 +209,7 @@ export const StockTable: React.FC<StockTableProps> = ({ stocks, privacyMode, con
 
     onConfigUpdate(newConfig).then(() => {
       setEditingTransaction(null);
-      setEditForm({ time: '', quantity: '', price: '' });
+      setEditForm({ time: '', quantity: '', totalAmount: '' });
     });
   };
 
@@ -221,7 +226,7 @@ export const StockTable: React.FC<StockTableProps> = ({ stocks, privacyMode, con
 
     // 获取要删除的交易记录
     const transactionToDelete = holding.transactions[index];
-    const deletedAmount = transactionToDelete.quantity * transactionToDelete.price;
+    const deletedAmount = transactionToDelete.totalAmount ?? (Math.abs(transactionToDelete.quantity) * transactionToDelete.price);
 
     // 如果交易有ID，从 transactions 表中删除
     if (transactionToDelete.id) {
@@ -597,6 +602,7 @@ export const StockTable: React.FC<StockTableProps> = ({ stocks, privacyMode, con
                               <TableRow>
                                 <TableCell>ID</TableCell>
                                 <TableCell>时间</TableCell>
+                                <TableCell>类型</TableCell>
                                 <TableCell>数量（股）</TableCell>
                                 <TableCell>单价</TableCell>
                                 <TableCell>总金额</TableCell>
@@ -604,39 +610,49 @@ export const StockTable: React.FC<StockTableProps> = ({ stocks, privacyMode, con
                               </TableRow>
                             </TableHead>
                             <TableBody>
-                              {stock.transactions.map((transaction, index) => (
-                                <TableRow key={index}>
-                                  <TableCell>{transaction.id || '--'}</TableCell>
-                                  <TableCell>{transaction.time}</TableCell>
-                                  <TableCell>
-                                    {privacyMode ? '***' : Math.floor(transaction.quantity).toLocaleString()}
-                                  </TableCell>
-                                  <TableCell>
-                                    {privacyMode ? '***' : formatPriceFixed(transaction.price)}
-                                  </TableCell>
-                                  <TableCell>
-                                    {privacyMode
-                                      ? '***'
-                                      : (transaction.quantity * transaction.price).toFixed(3)}
-                                  </TableCell>
-                                  <TableCell align="right">
-                                    <IconButton
-                                      size="small"
-                                      onClick={() => handleEditTransaction(stock.code, index, transaction)}
-                                      sx={{ color: '#1976d2' }}
-                                    >
-                                      <Edit fontSize="small" />
-                                    </IconButton>
-                                    <IconButton
-                                      size="small"
-                                      onClick={() => handleDeleteTransaction(stock.code, index)}
-                                      sx={{ color: 'error.main' }}
-                                    >
-                                      <Delete fontSize="small" />
-                                    </IconButton>
-                                  </TableCell>
-                                </TableRow>
-                              ))}
+                              {stock.transactions.map((transaction, index) => {
+                                const isBuy = transaction.quantity > 0;
+                                const totalAmount = transaction.totalAmount ?? (Math.abs(transaction.quantity) * transaction.price);
+                                
+                                return (
+                                  <TableRow key={index}>
+                                    <TableCell>{transaction.id || '--'}</TableCell>
+                                    <TableCell>{transaction.time}</TableCell>
+                                    <TableCell>
+                                      <Chip 
+                                        label={isBuy ? '买入' : '卖出'} 
+                                        size="small" 
+                                        color={isBuy ? 'primary' : 'secondary'}
+                                      />
+                                    </TableCell>
+                                    <TableCell>
+                                      {privacyMode ? '***' : Math.floor(Math.abs(transaction.quantity)).toLocaleString()}
+                                    </TableCell>
+                                    <TableCell>
+                                      {privacyMode ? '***' : formatPriceFixed(transaction.price)}
+                                    </TableCell>
+                                    <TableCell>
+                                      {privacyMode ? '***' : totalAmount.toFixed(2)}
+                                    </TableCell>
+                                    <TableCell align="right">
+                                      <IconButton
+                                        size="small"
+                                        onClick={() => handleEditTransaction(stock.code, index, transaction)}
+                                        sx={{ color: '#1976d2' }}
+                                      >
+                                        <Edit fontSize="small" />
+                                      </IconButton>
+                                      <IconButton
+                                        size="small"
+                                        onClick={() => handleDeleteTransaction(stock.code, index)}
+                                        sx={{ color: 'error.main' }}
+                                      >
+                                        <Delete fontSize="small" />
+                                      </IconButton>
+                                    </TableCell>
+                                  </TableRow>
+                                );
+                              })}
                             </TableBody>
                           </Table>
                         ) : (

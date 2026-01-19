@@ -2,8 +2,8 @@ import { Transaction } from '../types';
 
 /**
  * 从交易记录数组计算总数量和平均成本价
- * 成本价计算方式：(买入总金额 - 卖出总金额) / (买入总股数 - 卖出总股数)
- * 即：净投入金额 / 净持仓数量
+ * 成本价计算方式：(买入总金额 - 卖出总金额) / 净持仓数量
+ * 用户手动输入总金额，系统不再计算手续费/过户费/印花税
  */
 export function calculateHoldingFromTransactions(
   transactions: Transaction[]
@@ -20,9 +20,9 @@ export function calculateHoldingFromTransactions(
     const price = Number(trans.price) || 0;
     
     if (quantity !== 0 && price > 0) {
-      const amount = quantity * price; // 买入为正，卖出为负
-      totalCost += amount; // 买入增加成本，卖出减少成本
-      totalQuantity += quantity; // 买入增加数量，卖出减少数量（quantity是负数）
+      const baseAmount = quantity * price; // 基础金额（买入为正，卖出为负）
+      totalCost += baseAmount;
+      totalQuantity += quantity; // quantity为负时会减少总数量
     }
   }
 

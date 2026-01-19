@@ -7,6 +7,7 @@ import { Footer } from './components/Footer';
 import { VERSION } from './version';
 import { StockState, HoldingsConfig } from './types';
 import { initializeConfig, loadHoldingsConfig, saveHoldingsConfig, saveHistoryData, getTodayDate, resetToDefaultConfig } from './services/storage';
+import { exportAllData, importAllData } from './services/indexedDB';
 import { getMultipleRealtimePrices } from './services/stockData';
 import { calculateHoldingFromTransactions } from './utils/calculations';
 import { isTradingTime, shouldStopUpdating } from './utils/tradingTime';
@@ -29,11 +30,94 @@ function App() {
   const [initialized, setInitialized] = useState(false);
   const [alertMessage, setAlertMessage] = useState<string>('');
   const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
+  const [importConfirmOpen, setImportConfirmOpen] = useState(false);
+  const [dataManageDialogOpen, setDataManageDialogOpen] = useState(false);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
   const configRef = useRef<HoldingsConfig | null>(null);
   const stockStatesRef = useRef<Map<string, StockState>>(new Map()); // 使用 ref 保存最新的 stockStates
   const initializationRef = useRef<boolean>(false); // 使用 ref 跟踪是否正在初始化或已初始化
   
   // 重置所有数据
+  const handleExportData = async () => {
+    try {
+      const data = await exportAllData();
+      const jsonStr = JSON.stringify(data, null, 2);
+      const blob = new Blob([jsonStr], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `stocks-backup-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      setAlertMessage('数据导出成功');
+    } catch (error) {
+      console.error('导出数据失败:', error);
+      setAlertMessage('导出数据失败，请重试');
+    }
+  };
+
+  const handleImportData = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      
+      // 验证数据格式
+      if (!data || typeof data !== 'object') {
+        setAlertMessage('导入失败：文件格式不正确');
+        return;
+      }
+
+      // 确认导入
+      setImportConfirmOpen(true);
+      
+      // 保存文件数据到临时状态，等待确认
+      (window as any).__pendingImportData = data;
+    } catch (error) {
+      console.error('导入数据失败:', error);
+      setAlertMessage('导入失败：文件读取错误');
+    } finally {
+      // 清空文件输入，允许重复选择同一文件
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  const handleConfirmImport = async () => {
+    try {
+      const data = (window as any).__pendingImportData;
+      if (!data) {
+        setAlertMessage('导入失败：数据无效');
+        return;
+      }
+
+      await importAllData(data);
+      
+      // 重新加载配置
+      const newConfig = await initializeConfig();
+      setConfig(newConfig);
+      
+      setImportConfirmOpen(false);
+      setAlertMessage('数据导入成功，页面将刷新');
+      
+      // 延迟刷新页面
+      setTimeout(() => {
+        window.location.reload();
+      }, 1000);
+    } catch (error) {
+      console.error('导入数据失败:', error);
+      setAlertMessage('导入数据失败，请重试');
+      setImportConfirmOpen(false);
+    } finally {
+      delete (window as any).__pendingImportData;
+    }
+  };
+
   const handleResetData = async () => {
     try {
       const defaultConfig = await resetToDefaultConfig();
@@ -441,14 +525,19 @@ function App() {
         ? stocksForCalc.reduce((sum, stock) => sum + stock.last_change_pct, 0) / stocksForCalc.length
         : 0;
 
+    // 无持仓时，显示为0
+    const hasPosition = totalHoldingValue > 0 || holdingStockCount > 0;
+    const displayChangePct = hasPosition ? totalChangePct : 0;
+    const displayProfit = hasPosition ? totalProfit : 0;
+    const displayProfitPct = hasPosition ? totalProfitPct : 0;
+
     if (holdingStockCount > 0) {
       // 有持仓，显示盈亏：123.40(2.12%)
-      const sign = totalProfit >= 0 ? '+' : '';
-      document.title = `${sign}${totalProfit.toFixed(2)}(${totalProfitPct >= 0 ? '+' : ''}${totalProfitPct.toFixed(2)}%)`;
+      const sign = displayProfit >= 0 ? '+' : '';
+      document.title = `${sign}${displayProfit.toFixed(2)}(${displayProfitPct >= 0 ? '+' : ''}${displayProfitPct.toFixed(2)}%)`;
     } else {
-      // 没有持仓，显示涨跌幅：2.12%
-      const sign = totalChangePct >= 0 ? '+' : '';
-      document.title = `${sign}${totalChangePct.toFixed(2)}%`;
+      // 没有持仓，显示涨跌幅（为0）：0.00%
+      document.title = `${displayChangePct >= 0 ? '+' : ''}${displayChangePct.toFixed(2)}%`;
     }
   }, [config, stockStates]);
 
@@ -577,8 +666,16 @@ function App() {
           </Alert>
         </Snackbar>
         
-            {/* 重置数据按钮 */}
-            <Box sx={{ mt: 3, mb: 2, textAlign: 'center' }}>
+            {/* 数据管理按钮 */}
+            <Box sx={{ mt: 3, mb: 2, textAlign: 'center', display: 'flex', gap: 2, justifyContent: 'center' }}>
+              <Button
+                variant="outlined"
+                color="primary"
+                onClick={() => setDataManageDialogOpen(true)}
+                sx={{ textTransform: 'none' }}
+              >
+                数据导入导出
+              </Button>
               <Button
                 variant="outlined"
                 color="error"
@@ -588,6 +685,13 @@ function App() {
                 重置所有数据
               </Button>
             </Box>
+            <input
+              type="file"
+              ref={fileInputRef}
+              accept=".json"
+              style={{ display: 'none' }}
+              onChange={handleImportData}
+            />
 
             {/* Footer */}
             <Footer version={VERSION} />
@@ -606,6 +710,66 @@ function App() {
             <Button onClick={() => setResetConfirmOpen(false)}>取消</Button>
             <Button onClick={handleResetData} color="error" variant="contained">
               确认重置
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* 数据管理对话框 */}
+        <Dialog open={dataManageDialogOpen} onClose={() => setDataManageDialogOpen(false)} maxWidth="sm" fullWidth>
+          <DialogTitle>数据导入导出</DialogTitle>
+          <DialogContent>
+            <DialogContentText sx={{ mb: 3 }}>
+              本项目不会上传任何数据到互联网，所有数据均存储在本地浏览器中。
+              <br />
+              如有多设备使用，请自行通过导入导出功能同步数据。
+            </DialogContentText>
+            <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center', mt: 2 }}>
+              <Button
+                variant="contained"
+                color="primary"
+                onClick={() => {
+                  setDataManageDialogOpen(false);
+                  handleExportData();
+                }}
+                sx={{ textTransform: 'none' }}
+              >
+                导出数据
+              </Button>
+              <Button
+                variant="contained"
+                color="primary"
+                onClick={() => {
+                  setDataManageDialogOpen(false);
+                  fileInputRef.current?.click();
+                }}
+                sx={{ textTransform: 'none' }}
+              >
+                导入数据
+              </Button>
+            </Box>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setDataManageDialogOpen(false)}>关闭</Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* 导入确认对话框 */}
+        <Dialog open={importConfirmOpen} onClose={() => setImportConfirmOpen(false)}>
+          <DialogTitle>确认导入数据</DialogTitle>
+          <DialogContent>
+            <DialogContentText>
+              此操作将清空所有现有数据，并用导入的数据覆盖。
+              <br />
+              <strong>此操作不可恢复，请谨慎操作！</strong>
+            </DialogContentText>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => {
+              setImportConfirmOpen(false);
+              delete (window as any).__pendingImportData;
+            }}>取消</Button>
+            <Button onClick={handleConfirmImport} color="primary" variant="contained">
+              确认导入
             </Button>
           </DialogActions>
         </Dialog>

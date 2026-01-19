@@ -71,6 +71,12 @@ export const Statistics: React.FC<StatisticsProps> = ({
   const positionPct =
     totalAssets > 0 ? (totalHoldingValue / totalAssets) * 100 : 0;
 
+  // 无持仓时，展示为0并使用中性颜色
+  const hasPosition = totalHoldingValue > 0 || holdingStockCount > 0;
+  const displayChangePct = hasPosition ? totalChangePct : 0;
+  const displayProfit = hasPosition ? totalProfit : 0;
+  const displayProfitPct = hasPosition ? totalProfitPct : 0;
+
   // 当前时间
   const now = new Date();
   const timeStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
@@ -129,12 +135,12 @@ export const Statistics: React.FC<StatisticsProps> = ({
             variant="body2"
             component="span"
             sx={{
-              color: totalChangePct >= 0 ? '#d32f2f' : '#2e7d32',
+              color: hasPosition ? (displayChangePct >= 0 ? '#d32f2f' : '#2e7d32') : 'text.secondary',
               fontSize: '0.875rem',
               fontWeight: 'bold',
             }}
           >
-            {totalChangePct >= 0 ? '+' : ''}{totalChangePct.toFixed(2)}%
+            {displayChangePct >= 0 ? '+' : ''}{displayChangePct.toFixed(2)}%
           </Typography>
           {' | 持仓:'}{holdingStockCount} | 盈亏:
           {privacyMode ? (
@@ -142,24 +148,24 @@ export const Statistics: React.FC<StatisticsProps> = ({
               variant="body2"
               component="span"
               sx={{
-                color: totalProfitPct >= 0 ? '#d32f2f' : '#2e7d32',
+                color: hasPosition ? (displayProfitPct >= 0 ? '#d32f2f' : '#2e7d32') : 'text.secondary',
                 fontSize: '0.875rem',
                 fontWeight: 'bold',
               }}
             >
-              ***({totalProfitPct >= 0 ? '+' : ''}{totalProfitPct.toFixed(2)}%)
+              ***({displayProfitPct >= 0 ? '+' : ''}{displayProfitPct.toFixed(2)}%)
             </Typography>
           ) : (
             <Typography
               variant="body2"
               component="span"
               sx={{
-                color: totalProfit >= 0 ? '#d32f2f' : '#2e7d32',
+                color: hasPosition ? (displayProfit >= 0 ? '#d32f2f' : '#2e7d32') : 'text.secondary',
                 fontSize: '0.875rem',
                 fontWeight: 'bold',
               }}
             >
-              {totalProfit >= 0 ? '+' : ''}{formatPrivacyValue(totalProfit)}({totalProfitPct >= 0 ? '+' : ''}{totalProfitPct.toFixed(2)}%)
+              {displayProfit >= 0 ? '+' : ''}{formatPrivacyValue(displayProfit)}({displayProfitPct >= 0 ? '+' : ''}{displayProfitPct.toFixed(2)}%)
             </Typography>
           )}
         </Typography>

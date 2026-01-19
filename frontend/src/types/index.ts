@@ -3,7 +3,8 @@ export interface Transaction {
   id?: number; // 数据库自增ID
   time: string;
   quantity: number;
-  price: number;
+  price: number; // 单价（自动计算：总金额 / |数量|）
+  totalAmount?: number; // 总金额（手动输入，包含所有费用）
 }
 
 // 报警规则

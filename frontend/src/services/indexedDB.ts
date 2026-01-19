@@ -16,6 +16,7 @@ export interface TransactionItem {
   time: string;
   quantity: number;
   price: number;
+  totalAmount?: number; // 总金额（手动输入，包含所有费用）
 }
 
 const DB_NAME = 'stocks_db';
@@ -29,6 +30,21 @@ const STORE_HISTORY = 'history';
 
 // 数据库实例缓存
 let dbInstance: IDBDatabase | null = null;
+
+/**
+ * 删除整个数据库（用于彻底重置）
+ */
+async function deleteDatabase(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const deleteRequest = indexedDB.deleteDatabase(DB_NAME);
+    deleteRequest.onsuccess = () => {
+      dbInstance = null;
+      resolve();
+    };
+    deleteRequest.onerror = () => reject(new Error('删除 IndexedDB 失败'));
+    deleteRequest.onblocked = () => reject(new Error('删除 IndexedDB 被阻塞'));
+  });
+}
 
 /**
  * 打开 IndexedDB 数据库
@@ -329,43 +345,61 @@ export async function loadAllTransactions(): Promise<{ [code: string]: Transacti
  */
 export async function clearAllData(): Promise<void> {
   try {
-    const db = await openDB();
+    // 先关闭现有连接
+    if (dbInstance) {
+      dbInstance.close();
+      dbInstance = null;
+    }
     
-    // 清空 watchlist
-    const watchlistTransaction = db.transaction([STORE_WATCHLIST], 'readwrite');
-    const watchlistStore = watchlistTransaction.objectStore(STORE_WATCHLIST);
-    await new Promise<void>((resolve, reject) => {
-      const request = watchlistStore.clear();
-      request.onsuccess = () => resolve();
-      request.onerror = () => reject(new Error('清空 watchlist 失败'));
-    });
+    // 等待一小段时间，确保连接已关闭
+    await new Promise(resolve => setTimeout(resolve, 100));
     
-    // 清空 transactions
-    const transactionsTransaction = db.transaction([STORE_TRANSACTIONS], 'readwrite');
-    const transactionsStore = transactionsTransaction.objectStore(STORE_TRANSACTIONS);
-    await new Promise<void>((resolve, reject) => {
-      const request = transactionsStore.clear();
-      request.onsuccess = () => resolve();
-      request.onerror = () => reject(new Error('清空 transactions 失败'));
-    });
-    
-    // 清空 config
-    const configTransaction = db.transaction([STORE_CONFIG], 'readwrite');
-    const configStore = configTransaction.objectStore(STORE_CONFIG);
-    await new Promise<void>((resolve, reject) => {
-      const request = configStore.clear();
-      request.onsuccess = () => resolve();
-      request.onerror = () => reject(new Error('清空 config 失败'));
-    });
-    
-    // 清空 history（可选，根据需求决定是否清空历史数据）
-    const historyTransaction = db.transaction([STORE_HISTORY], 'readwrite');
-    const historyStore = historyTransaction.objectStore(STORE_HISTORY);
-    await new Promise<void>((resolve, reject) => {
-      const request = historyStore.clear();
-      request.onsuccess = () => resolve();
-      request.onerror = () => reject(new Error('清空 history 失败'));
-    });
+    // 尝试删除数据库（如果可能）
+    try {
+      await deleteDatabase();
+      // 删除成功，等待数据库完全删除
+      await new Promise(resolve => setTimeout(resolve, 100));
+    } catch (deleteError) {
+      // 如果删除被阻塞，则清空各个表
+      console.log('删除数据库被阻塞，改为清空各个表');
+      const db = await openDB();
+      
+      // 清空 watchlist
+      const watchlistTransaction = db.transaction([STORE_WATCHLIST], 'readwrite');
+      const watchlistStore = watchlistTransaction.objectStore(STORE_WATCHLIST);
+      await new Promise<void>((resolve, reject) => {
+        const request = watchlistStore.clear();
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(new Error('清空 watchlist 失败'));
+      });
+      
+      // 清空 transactions
+      const transactionsTransaction = db.transaction([STORE_TRANSACTIONS], 'readwrite');
+      const transactionsStore = transactionsTransaction.objectStore(STORE_TRANSACTIONS);
+      await new Promise<void>((resolve, reject) => {
+        const request = transactionsStore.clear();
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(new Error('清空 transactions 失败'));
+      });
+      
+      // 清空 config
+      const configTransaction = db.transaction([STORE_CONFIG], 'readwrite');
+      const configStore = configTransaction.objectStore(STORE_CONFIG);
+      await new Promise<void>((resolve, reject) => {
+        const request = configStore.clear();
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(new Error('清空 config 失败'));
+      });
+      
+      // 清空 history
+      const historyTransaction = db.transaction([STORE_HISTORY], 'readwrite');
+      const historyStore = historyTransaction.objectStore(STORE_HISTORY);
+      await new Promise<void>((resolve, reject) => {
+        const request = historyStore.clear();
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(new Error('清空 history 失败'));
+      });
+    }
   } catch (error) {
     console.error('清空所有数据失败:', error);
     throw error;
@@ -454,6 +488,7 @@ export async function saveHoldingsTransactions(
       time: transaction.time,
       quantity: transaction.quantity,
       price: transaction.price,
+      totalAmount: transaction.totalAmount, // 包含总金额字段
     };
     
     // 如果交易有ID且ID存在，更新记录
@@ -509,6 +544,7 @@ export async function loadHoldingsTransactions(code: string): Promise<Transactio
     time: item.time,
     quantity: item.quantity,
     price: item.price,
+    totalAmount: item.totalAmount, // 包含总金额字段
   }));
 }
 
@@ -525,6 +561,7 @@ export async function loadAllHoldingsTransactions(): Promise<{ [code: string]: T
       time: item.time,
       quantity: item.quantity,
       price: item.price,
+      totalAmount: item.totalAmount, // 包含总金额字段
     }));
   }
   
@@ -572,16 +609,8 @@ export async function saveConfig(config: HoldingsConfig): Promise<void> {
       update_interval: config.update_interval,
       funds: config.funds,
       market_hours: config.market_hours,
-      holdings: Object.fromEntries(
-        Object.entries(config.holdings).map(([code, holding]) => [
-          code,
-          {
-            alert_up: holding.alert_up,
-            alert_down: holding.alert_down,
-          },
-        ])
-      ),
-      watchlist: config.watchlist,
+      holdings: config.holdings, // 保存完整的 holdings（包含 alerts 数组）
+      watchlist: config.watchlist, // 保存完整的 watchlist（包含 alerts 数组）
     };
     
     await new Promise<void>((resolve, reject) => {
@@ -673,3 +702,117 @@ export async function loadHistoryData(date: string): Promise<any | null> {
 }
 
 // 历史数据永久保存，不再提供清理功能
+
+/**
+ * 导出所有数据
+ */
+export async function exportAllData(): Promise<{
+  watchlist: { [code: string]: WatchlistItem };
+  transactions: { [code: string]: TransactionItem[] };
+  config: HoldingsConfig | null;
+  history: { [date: string]: any };
+}> {
+  try {
+    const watchlist = await loadAllWatchlistItems();
+    // 导出时使用 loadAllTransactions 获取完整的 TransactionItem（包含 code）
+    // 而不是 loadAllHoldingsTransactions（它返回的 Transaction 不包含 code）
+    const allTransactions = await loadAllTransactions();
+    // 转换为 TransactionItem[] 格式（已经包含 code）
+    const transactions: { [code: string]: TransactionItem[] } = {};
+    for (const [code, items] of Object.entries(allTransactions)) {
+      transactions[code] = items.map(item => ({
+        id: item.id,
+        code: item.code,
+        time: item.time,
+        quantity: item.quantity,
+        price: item.price,
+        totalAmount: item.totalAmount,
+      }));
+    }
+    
+    // 使用 loadHoldingsConfig 来获取完整的配置（包含 alerts 数组）
+    const { loadHoldingsConfig } = await import('./storage');
+    const config = await loadHoldingsConfig();
+    
+    // 加载所有历史数据
+    const db = await openDB();
+    const historyTransaction = db.transaction([STORE_HISTORY], 'readonly');
+    const historyStore = historyTransaction.objectStore(STORE_HISTORY);
+    const history: { [date: string]: any } = {};
+    
+    await new Promise<void>((resolve, reject) => {
+      const request = historyStore.getAll();
+      request.onsuccess = () => {
+        request.result.forEach((item: { date: string; data: any }) => {
+          history[item.date] = item.data;
+        });
+        resolve();
+      };
+      request.onerror = () => reject(new Error('加载历史数据失败'));
+    });
+    
+    return {
+      watchlist,
+      transactions,
+      config,
+      history,
+    };
+  } catch (error) {
+    console.error('导出数据失败:', error);
+    throw error;
+  }
+}
+
+/**
+ * 导入所有数据（覆盖现有数据）
+ */
+export async function importAllData(data: {
+  watchlist: { [code: string]: WatchlistItem };
+  transactions: { [code: string]: TransactionItem[] };
+  config: HoldingsConfig | Partial<HoldingsConfig> | null;
+  history: { [date: string]: any };
+}): Promise<void> {
+  try {
+    // 1. 清空所有现有数据
+    await clearAllData();
+    
+    // 2. 导入 watchlist
+    for (const [code, item] of Object.entries(data.watchlist || {})) {
+      await saveWatchlistItem(item);
+    }
+    
+    // 3. 导入 transactions
+    // 注意：导入时需要移除 id 字段，让数据库自动生成新的 ID
+    // 同时需要确保 code 字段存在（因为导出的 Transaction 类型不包含 code）
+    for (const [code, transactions] of Object.entries(data.transactions || {})) {
+      if (Array.isArray(transactions) && transactions.length > 0) {
+        for (const transaction of transactions) {
+          // 创建新的 transaction 对象，移除 id 字段（让数据库自动生成）
+          // 确保 code 字段存在（因为导出的 Transaction 类型不包含 code）
+          const { id, ...transactionWithoutId } = transaction;
+          const transactionItem: TransactionItem = {
+            code, // 从外层循环获取 code
+            time: transactionWithoutId.time,
+            quantity: transactionWithoutId.quantity,
+            price: transactionWithoutId.price,
+            totalAmount: transactionWithoutId.totalAmount, // 包含总金额字段
+          };
+          await addTransaction(transactionItem, `import-${code}`);
+        }
+      }
+    }
+    
+    // 4. 导入 config
+    if (data.config) {
+      await saveConfig(data.config as HoldingsConfig);
+    }
+    
+    // 5. 导入 history
+    for (const [date, historyData] of Object.entries(data.history || {})) {
+      await saveHistoryData(date, historyData);
+    }
+  } catch (error) {
+    console.error('导入数据失败:', error);
+    throw error;
+  }
+}

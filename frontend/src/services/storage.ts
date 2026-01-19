@@ -82,19 +82,34 @@ export async function initializeConfig(): Promise<HoldingsConfig> {
     // 如果老数据没有add_time，初始化为当前时间
     const addTime = watchlistItem.add_time || currentTimeStr;
     
+    // 从 alert_up 和 alert_down 构建 alerts 数组
+    let alerts: Array<{ type: 'up' | 'down'; price: number }> | undefined = undefined;
+    if (watchlistItem.alert_up !== null && watchlistItem.alert_up !== undefined) {
+      alerts = alerts || [];
+      alerts.push({ type: 'up', price: watchlistItem.alert_up });
+    }
+    if (watchlistItem.alert_down !== null && watchlistItem.alert_down !== undefined) {
+      alerts = alerts || [];
+      alerts.push({ type: 'down', price: watchlistItem.alert_down });
+    }
+    
     if (validTransactions.length > 0) {
       // 有交易记录，是持仓
       config.holdings[code] = {
         transactions: validTransactions,
+        alerts: alerts && alerts.length > 0 ? alerts : undefined,
+        // 向后兼容
         alert_up: watchlistItem.alert_up,
         alert_down: watchlistItem.alert_down,
       };
     } else {
       // 没有交易记录，是自选
       config.watchlist[code] = {
+        alerts: alerts && alerts.length > 0 ? alerts : undefined,
+        add_time: addTime,
+        // 向后兼容
         alert_up: watchlistItem.alert_up,
         alert_down: watchlistItem.alert_down,
-        add_time: addTime,
       };
     }
     
@@ -161,19 +176,34 @@ export async function loadHoldingsConfig(): Promise<HoldingsConfig> {
     // 如果老数据没有add_time，初始化为当前时间
     const addTime = watchlistItem.add_time || currentTimeStr;
     
+    // 从 alert_up 和 alert_down 构建 alerts 数组
+    let alerts: Array<{ type: 'up' | 'down'; price: number }> | undefined = undefined;
+    if (watchlistItem.alert_up !== null && watchlistItem.alert_up !== undefined) {
+      alerts = alerts || [];
+      alerts.push({ type: 'up', price: watchlistItem.alert_up });
+    }
+    if (watchlistItem.alert_down !== null && watchlistItem.alert_down !== undefined) {
+      alerts = alerts || [];
+      alerts.push({ type: 'down', price: watchlistItem.alert_down });
+    }
+    
     if (validTransactions.length > 0) {
       // 有交易记录，是持仓
       config.holdings[code] = {
         transactions: validTransactions,
+        alerts: alerts && alerts.length > 0 ? alerts : undefined,
+        // 向后兼容
         alert_up: watchlistItem.alert_up,
         alert_down: watchlistItem.alert_down,
       };
     } else {
       // 没有交易记录，是自选
       config.watchlist[code] = {
+        alerts: alerts && alerts.length > 0 ? alerts : undefined,
+        add_time: addTime,
+        // 向后兼容
         alert_up: watchlistItem.alert_up,
         alert_down: watchlistItem.alert_down,
-        add_time: addTime,
       };
     }
     
@@ -213,14 +243,49 @@ export async function saveHoldingsConfig(config: HoldingsConfig): Promise<void> 
         // 是持仓，保存到 watchlist 表
         // 先尝试从数据库加载已有的add_time，如果没有则使用当前时间
         const existingItem = await loadWatchlistItem(code);
-        const addTime = existingItem?.add_time || new Date().toISOString().replace('T', ' ').substring(0, 19);
+        let addTime = existingItem?.add_time || new Date().toISOString().replace('T', ' ').substring(0, 19);
+        
+        // 如果有交易记录，找到最早的交易时间，与 add_time 比较，取更早的一个
+        if (holding.transactions && holding.transactions.length > 0) {
+          // 找到最早的交易时间
+          const transactionTimes = holding.transactions.map(t => t.time).filter(t => t);
+          if (transactionTimes.length > 0) {
+            // 将时间字符串转换为 Date 对象进行比较
+            const transactionDates = transactionTimes.map(t => new Date(t.replace(' ', 'T')));
+            const earliestTransactionTime = new Date(Math.min(...transactionDates.map(d => d.getTime())));
+            const addTimeDate = new Date(addTime.replace(' ', 'T'));
+            
+            // 取更早的时间
+            if (earliestTransactionTime < addTimeDate) {
+              // 将 Date 对象转换回字符串格式
+              const year = earliestTransactionTime.getFullYear();
+              const month = String(earliestTransactionTime.getMonth() + 1).padStart(2, '0');
+              const day = String(earliestTransactionTime.getDate()).padStart(2, '0');
+              const hours = String(earliestTransactionTime.getHours()).padStart(2, '0');
+              const minutes = String(earliestTransactionTime.getMinutes()).padStart(2, '0');
+              const seconds = String(earliestTransactionTime.getSeconds()).padStart(2, '0');
+              addTime = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+            }
+          }
+        }
+        
+        // 从 alerts 数组提取 alert_up 和 alert_down（向后兼容）
+        let alertUp: number | null = holding.alert_up ?? null;
+        let alertDown: number | null = holding.alert_down ?? null;
+        if (holding.alerts && holding.alerts.length > 0) {
+          // 从 alerts 数组提取
+          const upAlert = holding.alerts.find(a => a.type === 'up');
+          const downAlert = holding.alerts.find(a => a.type === 'down');
+          alertUp = upAlert ? upAlert.price : null;
+          alertDown = downAlert ? downAlert.price : null;
+        }
         
         await saveWatchlistItem({
           code,
           name: code, // 名称可以从实时数据更新
-          alert_up: holding.alert_up,
-          alert_down: holding.alert_down,
-          add_time: addTime, // 保留已有的添加时间，如果没有则使用当前时间
+          alert_up: alertUp,
+          alert_down: alertDown,
+          add_time: addTime, // 使用交易时间和添加时间中更早的一个
         });
         
         // 保存交易记录
@@ -246,11 +311,22 @@ export async function saveHoldingsConfig(config: HoldingsConfig): Promise<void> 
         }
       } else if (watchlistItem) {
         // 是自选，保存到 watchlist 表
+        // 从 alerts 数组提取 alert_up 和 alert_down（向后兼容）
+        let alertUp: number | null = watchlistItem.alert_up ?? null;
+        let alertDown: number | null = watchlistItem.alert_down ?? null;
+        if (watchlistItem.alerts && watchlistItem.alerts.length > 0) {
+          // 从 alerts 数组提取
+          const upAlert = watchlistItem.alerts.find(a => a.type === 'up');
+          const downAlert = watchlistItem.alerts.find(a => a.type === 'down');
+          alertUp = upAlert ? upAlert.price : null;
+          alertDown = downAlert ? downAlert.price : null;
+        }
+        
         await saveWatchlistItem({
           code,
           name: code,
-          alert_up: watchlistItem.alert_up,
-          alert_down: watchlistItem.alert_down,
+          alert_up: alertUp,
+          alert_down: alertDown,
           add_time: watchlistItem.add_time, // 保存添加时间
         });
       }

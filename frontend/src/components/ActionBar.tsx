@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Box, Button, Dialog, DialogTitle, DialogContent, DialogActions, TextField, MenuItem, Select, FormControl, InputLabel, Typography, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, IconButton, Chip } from '@mui/material';
 import { Add, ShoppingCart, AccountBalance, History, Edit, Delete } from '@mui/icons-material';
 import { getRealtimePrice } from '../services/stockData';
@@ -39,12 +39,10 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
   const [transactionStockCodeInput, setTransactionStockCodeInput] = useState('');
   const [transactionTime, setTransactionTime] = useState('');
   const [transactionQuantity, setTransactionQuantity] = useState('100');
-  const [transactionPrice, setTransactionPrice] = useState('');
+  const [transactionTotalAmount, setTransactionTotalAmount] = useState('');
   const [transactionLoading, setTransactionLoading] = useState(false);
   const [transactionError, setTransactionError] = useState<string>('');
   const [transactionStockValidated, setTransactionStockValidated] = useState(false);
-  const [transactionCurrentPrice, setTransactionCurrentPrice] = useState<number | null>(null);
-  const [transactionPriceInitialized, setTransactionPriceInitialized] = useState(false);
 
   // 增减本金相关状态
   const [openFundsDialog, setOpenFundsDialog] = useState(false);
@@ -74,8 +72,8 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
   const [historyEditForm, setHistoryEditForm] = useState<{
     time: string;
     quantity: string;
-    price: string;
-  }>({ time: '', quantity: '', price: '' });
+    totalAmount: string;
+  }>({ time: '', quantity: '', totalAmount: '' });
   
   // 筛选相关状态
   const [filterStockCode, setFilterStockCode] = useState<string>('');
@@ -175,6 +173,16 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
     }
   }, [openTransaction, transactionTime]);
 
+  // 计算单价（总金额 / |数量|）
+  const calculatedPrice = useMemo(() => {
+    const quantity = parseFloat(transactionQuantity);
+    const totalAmount = parseFloat(transactionTotalAmount);
+    if (isNaN(quantity) || quantity === 0 || isNaN(totalAmount) || totalAmount <= 0) {
+      return null;
+    }
+    return totalAmount / Math.abs(quantity);
+  }, [transactionQuantity, transactionTotalAmount]);
+
   // 获取所有自选股代码（包括持仓）
   const getAllStockCodes = (): string[] => {
     const codes = new Set<string>();
@@ -186,24 +194,15 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
   // 处理打开交易对话框
   const handleOpenTransaction = useCallback((presetStockCode?: string) => {
     setOpenTransaction(true);
-    setTransactionPriceInitialized(false); // 重置初始化标志
     if (presetStockCode) {
       // 如果预设了股票代码，直接设置为已验证状态
       setTransactionStockCode(presetStockCode);
       setTransactionStockCodeInput('');
       setTransactionStockValidated(true);
-      // 设置当前价格（用于显示）
-      const price = stockStates?.get(presetStockCode)?.last_price || null;
-      setTransactionCurrentPrice(price);
-      // 只在初始化时设置输入框价格
-      setTransactionPrice(price ? price.toFixed(3) : '');
-      setTransactionPriceInitialized(true);
     } else {
       setTransactionStockCode('');
       setTransactionStockCodeInput('');
       setTransactionStockValidated(false);
-      setTransactionCurrentPrice(null);
-      setTransactionPrice('');
     }
     setTransactionTime('');
     setTransactionQuantity('100');
@@ -255,11 +254,9 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
     setTransactionStockCodeInput('');
     setTransactionTime('');
     setTransactionQuantity('100');
-    setTransactionPrice('');
+    setTransactionTotalAmount('');
     setTransactionError('');
     setTransactionStockValidated(false);
-    setTransactionCurrentPrice(null);
-    setTransactionPriceInitialized(false);
   };
 
   // 处理关闭"查看所有交易"对话框
@@ -288,13 +285,6 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
     try {
       // 如果是从下拉框选择的，直接使用
       if (transactionStockCode && getAllStockCodes().includes(transactionStockCode)) {
-        const price = stockStates?.get(transactionStockCode)?.last_price || null;
-        setTransactionCurrentPrice(price);
-        // 只在初始化时设置输入框价格
-        if (!transactionPriceInitialized) {
-          setTransactionPrice(price ? price.toFixed(3) : '');
-          setTransactionPriceInitialized(true);
-        }
         setTransactionStockValidated(true);
         setTransactionLoading(false);
         return;
@@ -334,13 +324,6 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
         onStockAdded(code);
       }
 
-      // 设置当前价格（用于显示）
-      setTransactionCurrentPrice(data.price);
-      // 只在初始化时设置输入框价格
-      if (!transactionPriceInitialized) {
-        setTransactionPrice(data.price.toFixed(3));
-        setTransactionPriceInitialized(true);
-      }
       setTransactionStockCode(code);
       setTransactionStockCodeInput('');
       setTransactionStockValidated(true);
@@ -376,11 +359,14 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
       return;
     }
 
-    const price = parseFloat(transactionPrice);
-    if (isNaN(price) || price <= 0) {
-      setTransactionError('请输入有效的交易价格');
+    const totalAmount = parseFloat(transactionTotalAmount);
+    if (isNaN(totalAmount) || totalAmount <= 0) {
+      setTransactionError('请输入有效的总金额');
       return;
     }
+
+    // 自动计算单价：总金额 / |数量|
+    const price = totalAmount / Math.abs(quantity);
 
     // 更新持仓配置
     const existingHolding = config.holdings[code] || {
@@ -414,15 +400,15 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
       time: transactionTime,
       quantity: quantity,
       price: price,
+      totalAmount: totalAmount,
     };
 
-    // 计算交易金额
+    // 计算资金变化
     // 买入（正数）：减少可用资金
     // 卖出（负数）：增加可用资金
-    const transactionAmount = Math.abs(quantity) * price;
     const newAvailableFunds = quantity > 0 
-      ? config.funds.available_funds - transactionAmount  // 买入减少资金
-      : config.funds.available_funds + transactionAmount;  // 卖出增加资金
+      ? config.funds.available_funds - totalAmount  // 买入减少资金
+      : config.funds.available_funds + totalAmount;  // 卖出增加资金
 
     const newConfig = {
       ...config,
@@ -453,21 +439,6 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
     });
   };
 
-  // 当股价变化时，只更新显示用的当前价格，不更新输入框
-  useEffect(() => {
-    if (transactionStockCode && stockStates?.has(transactionStockCode) && openTransaction) {
-      const price = stockStates.get(transactionStockCode)?.last_price;
-      if (price !== null && price !== undefined) {
-        // 只更新显示用的当前价格，不更新输入框
-        setTransactionCurrentPrice(price);
-        // 如果价格还没有初始化，才设置输入框（这种情况应该很少，因为 handleOpenTransaction 已经设置了）
-        if (!transactionPriceInitialized) {
-          setTransactionPrice(price.toFixed(3));
-          setTransactionPriceInitialized(true);
-        }
-      }
-    }
-  }, [transactionStockCode, stockStates, openTransaction, transactionPriceInitialized]);
 
   // 处理打开增减本金对话框
   const handleOpenFundsDialog = () => {
@@ -762,15 +733,28 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
                 />
 
                 <TextField
-                  label="单价"
+                  label="总金额"
                   type="number"
                   fullWidth
+                  required
                   variant="outlined"
-                  value={transactionPrice}
-                  onChange={(e) => setTransactionPrice(e.target.value)}
-                  inputProps={{ min: 0, step: 0.001 }}
-                  helperText={transactionCurrentPrice !== null ? `当前价格: ${transactionCurrentPrice.toFixed(3)}` : ''}
+                  value={transactionTotalAmount}
+                  onChange={(e) => setTransactionTotalAmount(e.target.value)}
+                  inputProps={{ min: 0, step: 0.01 }}
+                  helperText="由于券商计算规则复杂，请手动输入（包含所有费用）"
                 />
+
+                {calculatedPrice !== null && (
+                  <TextField
+                    label="单价（自动计算）"
+                    type="number"
+                    fullWidth
+                    variant="outlined"
+                    value={calculatedPrice.toFixed(3)}
+                    InputProps={{ readOnly: true }}
+                    helperText={`总金额 ÷ |数量| = ${calculatedPrice.toFixed(3)}`}
+                  />
+                )}
               </>
             )}
           </Box>
@@ -1135,6 +1119,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
                       <TableCell>股票名称</TableCell>
                       <TableCell>状态</TableCell>
                       <TableCell>交易时间</TableCell>
+                      <TableCell>类型</TableCell>
                       <TableCell>数量（股）</TableCell>
                       <TableCell>单价</TableCell>
                       <TableCell>总金额</TableCell>
@@ -1142,56 +1127,69 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {filteredTransactions.map((item, index) => (
-                      <TableRow key={`${item.isHistorical ? 'historical' : 'current'}-${item.code}-${item.transactionIndex}-${index}`}>
-                        <TableCell>{item.transaction.id || '--'}</TableCell>
-                        <TableCell>{item.code}</TableCell>
-                        <TableCell>{item.name}</TableCell>
-                        <TableCell>
-                          {item.isHistorical ? (
-                            <Chip label="已删除自选" size="small" color="default" />
-                          ) : (
-                            <Chip label="当前持仓" size="small" color="primary" />
-                          )}
-                        </TableCell>
-                        <TableCell>{item.transaction.time}</TableCell>
-                        <TableCell>{Math.floor(item.transaction.quantity).toLocaleString()}</TableCell>
-                        <TableCell>{formatPriceFixed(item.transaction.price)}</TableCell>
-                        <TableCell>{(item.transaction.quantity * item.transaction.price).toFixed(3)}</TableCell>
-                        <TableCell align="right">
-                          <IconButton
-                            size="small"
-                            onClick={() => {
-                              setEditingHistoryTransaction({
+                    {filteredTransactions.map((item, index) => {
+                      const isBuy = item.transaction.quantity > 0;
+                      const totalAmount = item.transaction.totalAmount ?? (Math.abs(item.transaction.quantity) * item.transaction.price);
+                      
+                      return (
+                        <TableRow key={`${item.isHistorical ? 'historical' : 'current'}-${item.code}-${item.transactionIndex}-${index}`}>
+                          <TableCell>{item.transaction.id || '--'}</TableCell>
+                          <TableCell>{item.code}</TableCell>
+                          <TableCell>{item.name}</TableCell>
+                          <TableCell>
+                            {item.isHistorical ? (
+                              <Chip label="已删除自选" size="small" color="default" />
+                            ) : (
+                              <Chip label="当前持仓" size="small" color="primary" />
+                            )}
+                          </TableCell>
+                          <TableCell>{item.transaction.time}</TableCell>
+                          <TableCell>
+                            <Chip 
+                              label={isBuy ? '买入' : '卖出'} 
+                              size="small" 
+                              color={isBuy ? 'primary' : 'secondary'}
+                            />
+                          </TableCell>
+                          <TableCell>{Math.floor(Math.abs(item.transaction.quantity)).toLocaleString()}</TableCell>
+                          <TableCell>{formatPriceFixed(item.transaction.price)}</TableCell>
+                          <TableCell>{totalAmount.toFixed(2)}</TableCell>
+                          <TableCell align="right">
+                            <IconButton
+                              size="small"
+                              onClick={() => {
+                                const totalAmount = item.transaction.totalAmount ?? (Math.abs(item.transaction.quantity) * item.transaction.price);
+                                setEditingHistoryTransaction({
+                                  code: item.code,
+                                  isHistorical: item.isHistorical,
+                                  transactionIndex: item.transactionIndex,
+                                  transaction: item.transaction,
+                                });
+                                setHistoryEditForm({
+                                  time: item.transaction.time,
+                                  quantity: item.transaction.quantity.toString(),
+                                  totalAmount: totalAmount.toString(),
+                                });
+                              }}
+                              sx={{ color: '#1976d2' }}
+                            >
+                              <Edit fontSize="small" />
+                            </IconButton>
+                            <IconButton
+                              size="small"
+                              onClick={() => setDeletingHistoryTransaction({ 
                                 code: item.code,
                                 isHistorical: item.isHistorical,
-                                transactionIndex: item.transactionIndex,
-                                transaction: item.transaction,
-                              });
-                              setHistoryEditForm({
-                                time: item.transaction.time,
-                                quantity: item.transaction.quantity.toString(),
-                                price: item.transaction.price.toString(),
-                              });
-                            }}
-                            sx={{ color: '#1976d2' }}
-                          >
-                            <Edit fontSize="small" />
-                          </IconButton>
-                          <IconButton
-                            size="small"
-                            onClick={() => setDeletingHistoryTransaction({ 
-                              code: item.code,
-                              isHistorical: item.isHistorical,
-                              transactionIndex: item.transactionIndex 
-                            })}
-                            sx={{ color: 'error.main' }}
-                          >
-                            <Delete fontSize="small" />
-                          </IconButton>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                                transactionIndex: item.transactionIndex 
+                              })}
+                              sx={{ color: 'error.main' }}
+                            >
+                              <Delete fontSize="small" />
+                            </IconButton>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </TableContainer>
@@ -1264,15 +1262,36 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
               helperText="正数为买入，负数为卖出"
             />
             <TextField
-              label="单价"
+              label="总金额"
               type="number"
               size="small"
               fullWidth
+              required
               variant="outlined"
-              value={historyEditForm.price}
-              onChange={(e) => setHistoryEditForm({ ...historyEditForm, price: e.target.value })}
-              inputProps={{ min: 0, step: 0.001 }}
+              value={historyEditForm.totalAmount}
+              onChange={(e) => setHistoryEditForm({ ...historyEditForm, totalAmount: e.target.value })}
+              inputProps={{ min: 0, step: 0.01 }}
+              helperText="由于券商计算规则复杂，请手动输入（包含所有费用）"
             />
+            {(() => {
+              const quantity = parseFloat(historyEditForm.quantity);
+              const totalAmount = parseFloat(historyEditForm.totalAmount);
+              const calculatedPrice = (!isNaN(quantity) && quantity !== 0 && !isNaN(totalAmount) && totalAmount > 0)
+                ? totalAmount / Math.abs(quantity)
+                : null;
+              return calculatedPrice !== null ? (
+                <TextField
+                  label="单价（自动计算）"
+                  type="number"
+                  size="small"
+                  fullWidth
+                  variant="outlined"
+                  value={calculatedPrice.toFixed(3)}
+                  InputProps={{ readOnly: true }}
+                  helperText={`总金额 ÷ |数量| = ${calculatedPrice.toFixed(3)}`}
+                />
+              ) : null;
+            })()}
           </Box>
         </DialogContent>
         <DialogActions sx={{ px: 2, pb: 1.5 }}>
@@ -1282,11 +1301,14 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
               if (!editingHistoryTransaction) return;
               const { code, isHistorical, transactionIndex } = editingHistoryTransaction;
               const quantity = parseFloat(historyEditForm.quantity);
-              const price = parseFloat(historyEditForm.price);
+              const totalAmount = parseFloat(historyEditForm.totalAmount);
 
-              if (isNaN(quantity) || quantity === 0 || isNaN(price) || price <= 0 || !historyEditForm.time) {
+              if (isNaN(quantity) || quantity === 0 || isNaN(totalAmount) || totalAmount <= 0 || !historyEditForm.time) {
                 return;
               }
+
+              // 自动计算单价：总金额 / |数量|
+              const price = totalAmount / Math.abs(quantity);
 
               // 如果是卖出（负数），检查修改后的持仓是否足够（仅对当前持仓的交易检查）
               if (quantity < 0 && !isHistorical) {
@@ -1314,6 +1336,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
                 time: historyEditForm.time,
                 quantity: quantity,
                 price: price,
+                totalAmount: totalAmount,
               };
 
               if (isHistorical) {
@@ -1328,12 +1351,13 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
                     time: historyEditForm.time,
                     quantity: quantity,
                     price: price,
+                    totalAmount: totalAmount,
                   });
                   // 重新加载配置并保存
                   const newConfig = await loadHoldingsConfig();
                   await onConfigUpdate(newConfig);
                   setEditingHistoryTransaction(null);
-                  setHistoryEditForm({ time: '', quantity: '', price: '' });
+                  setHistoryEditForm({ time: '', quantity: '', totalAmount: '' });
                   // 重新加载交易数据
                   const updatedTransactions = await loadAllHoldingsTransactions();
                   setAllTransactionsData(updatedTransactions);
@@ -1343,20 +1367,20 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
                 const holding = config.holdings[code];
                 if (holding) {
                   const oldTransaction = holding.transactions[transactionIndex];
-                  // 计算修改前后的金额差额
                   // 计算资金变化：买入减少资金，卖出增加资金
-                  // 计算资金变化：买入减少资金，卖出增加资金
-                  const oldAmount = Math.abs(oldTransaction.quantity) * oldTransaction.price;
-                  const newAmount = Math.abs(quantity) * price;
-                  const oldTransactionAmount = oldTransaction.quantity > 0 ? -oldAmount : oldAmount; // 买入为负，卖出为正
-                  const newTransactionAmount = quantity > 0 ? -newAmount : newAmount; // 买入为负，卖出为正
+                  const oldTotalAmount = oldTransaction.totalAmount ?? (Math.abs(oldTransaction.quantity) * oldTransaction.price);
+                  const oldTransactionAmount = oldTransaction.quantity > 0 ? -oldTotalAmount : oldTotalAmount; // 买入为负，卖出为正
+                  const newTransactionAmount = quantity > 0 ? -totalAmount : totalAmount; // 买入为负，卖出为正
                   const amountDiff = oldTransactionAmount - newTransactionAmount; // 资金变化量
 
                   const newTransactions = [...holding.transactions];
                   // 保留原有交易的ID
                   newTransactions[transactionIndex] = {
-                    ...newTransaction,
                     id: oldTransaction.id,
+                    time: historyEditForm.time,
+                    quantity: quantity,
+                    price: price,
+                    totalAmount: totalAmount,
                   };
 
                   const newAvailableFunds = config.funds.available_funds + amountDiff;
