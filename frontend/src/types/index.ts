@@ -26,6 +26,7 @@ export interface HoldingConfig {
 export interface WatchlistConfig {
   alerts?: AlertRule[]; // 报警规则数组
   add_time?: string; // 添加自选的时间（YYYY-MM-DD HH:mm:ss格式）
+  categories?: string[]; // 所属分类数组（支持多个分类）
   // 向后兼容：保留旧的字段
   alert_up?: number | null;
   alert_down?: number | null;
@@ -42,6 +43,7 @@ export interface HistoricalHolding {
 export interface HoldingsConfig {
   privacy_mode: boolean;
   update_interval?: number; // 更新频率（毫秒），默认1000ms
+  stock_order?: string[]; // 股票排序顺序（股票代码数组）
   funds: {
     available_funds: number;
     total_original_funds: number;
@@ -65,6 +67,15 @@ export interface HoldingsConfig {
   };
   watchlist: {
     [code: string]: WatchlistConfig;
+  };
+  categories?: {
+    [name: string]: {
+      codes: string[]; // 股票代码数组
+      color?: string; // 分类颜色
+      title?: string; // 分类标题（显示名称，默认为分类名称）
+      isDefault?: boolean; // 是否为默认"自选"分类
+      isHoldings?: boolean; // 是否为默认"持仓"分类
+    };
   };
   historical_holdings?: HistoricalHolding[]; // 历史交易数据
 }

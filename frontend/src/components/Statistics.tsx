@@ -92,7 +92,7 @@ export const Statistics: React.FC<StatisticsProps> = ({
   };
 
   return (
-    <Paper sx={{ p: 1.5, mb: 1.5, backgroundColor: '#f5f5f5', position: 'relative' }}>
+    <Paper sx={{ p: 0.5, mb: 0.5, backgroundColor: '#f5f5f5', position: 'relative', borderRadius: 0 }}>
       {/* 右上角控制区 */}
       <Box sx={{ position: 'absolute', top: 8, right: 8, display: 'flex', alignItems: 'center', gap: 1 }}>
         {/* 更新频率选择 */}

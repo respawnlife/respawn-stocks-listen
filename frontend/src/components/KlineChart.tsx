@@ -61,8 +61,9 @@ export const KlineChart: React.FC<KlineChartProps> = ({ open, onClose, stockCode
   }, [stockCode]);
 
   // 更新价格区间线（最高价、最低价、均价）
-  const updatePriceRangeLines = React.useCallback(() => {
-    if (!candlestickSeriesRef.current || !chartRef.current || !showPriceRange) {
+  const updatePriceRangeLines = React.useCallback((shouldShow?: boolean) => {
+    const show = shouldShow !== undefined ? shouldShow : showPriceRange;
+    if (!candlestickSeriesRef.current || !chartRef.current || !show) {
       // 如果开关关闭，移除所有价格区间线
       if (rangePriceLinesRef.current.high) {
         candlestickSeriesRef.current.removePriceLine(rangePriceLinesRef.current.high);
@@ -775,7 +776,7 @@ export const KlineChart: React.FC<KlineChartProps> = ({ open, onClose, stockCode
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth>
-      <DialogTitle sx={{ pb: 1 }}>
+      <DialogTitle sx={{ pb: 0.5 }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Typography variant="h6">
             {stockName} ({stockCode}) - K线图
@@ -786,11 +787,10 @@ export const KlineChart: React.FC<KlineChartProps> = ({ open, onClose, stockCode
                 <Switch
                   checked={showPriceRange}
                   onChange={(e) => {
-                    setShowPriceRange(e.target.checked);
-                    // 延迟更新，确保state已更新
-                    setTimeout(() => {
-                      updatePriceRangeLines();
-                    }, 0);
+                    const newValue = e.target.checked;
+                    setShowPriceRange(newValue);
+                    // 直接传递新值，不依赖state更新
+                    updatePriceRangeLines(newValue);
                   }}
                   size="small"
                 />
@@ -818,7 +818,7 @@ export const KlineChart: React.FC<KlineChartProps> = ({ open, onClose, stockCode
           </Box>
         </Box>
       </DialogTitle>
-      <DialogContent sx={{ pt: 1, position: 'relative' }}>
+      <DialogContent sx={{ pt: 0.5, position: 'relative' }}>
         {loading && (
           <Box
             sx={{
@@ -902,7 +902,7 @@ export const KlineChart: React.FC<KlineChartProps> = ({ open, onClose, stockCode
           )}
         </Box>
       </DialogContent>
-      <DialogActions sx={{ px: 2, pb: 1.5 }}>
+      <DialogActions sx={{ px: 1, pb: 0.5 }}>
         <Button size="small" onClick={onClose}>
           关闭
         </Button>

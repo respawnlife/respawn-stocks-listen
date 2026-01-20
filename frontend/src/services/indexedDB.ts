@@ -607,10 +607,12 @@ export async function saveConfig(config: HoldingsConfig): Promise<void> {
       key: 'main',
       privacy_mode: config.privacy_mode,
       update_interval: config.update_interval,
+      stock_order: config.stock_order, // 保存股票排序顺序
+      categories: config.categories, // 保存分类数据
       funds: config.funds,
       market_hours: config.market_hours,
       holdings: config.holdings, // 保存完整的 holdings（包含 alerts 数组）
-      watchlist: config.watchlist, // 保存完整的 watchlist（包含 alerts 数组）
+      watchlist: config.watchlist, // 保存完整的 watchlist（包含 alerts 数组和 categories）
     };
     
     await new Promise<void>((resolve, reject) => {
@@ -641,6 +643,8 @@ export async function loadConfig(): Promise<Partial<HoldingsConfig> | null> {
           resolve({
             privacy_mode: result.privacy_mode,
             update_interval: result.update_interval,
+            stock_order: result.stock_order, // 加载股票排序顺序
+            categories: result.categories, // 加载分类数据
             funds: result.funds,
             market_hours: result.market_hours,
             holdings: result.holdings,

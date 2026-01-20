@@ -36,18 +36,41 @@ export async function initializeConfig(): Promise<HoldingsConfig> {
 
   if (configData) {
     // 从 IndexedDB 加载的配置
+    // 注意：holdings 和 watchlist 应该从 watchlist 表和 transactions 表重建，而不是从 config 中读取
     config = {
       privacy_mode: configData.privacy_mode ?? false,
       update_interval: configData.update_interval ?? 1000, // 默认1秒
+      stock_order: configData.stock_order, // 加载排序顺序
+      categories: configData.categories, // 加载分类数据
       funds: configData.funds || {
         available_funds: 0.0,
         total_original_funds: 0.0,
       },
       market_hours: configData.market_hours || {},
-      holdings: configData.holdings || {},
-      watchlist: configData.watchlist || {},
+      holdings: {}, // 从 watchlist 表和 transactions 表重建，不从这里读取
+      watchlist: {}, // 从 watchlist 表重建，不从这里读取
       historical_holdings: [],
     };
+    // 确保"自选"分类有 isDefault 标识（兼容旧数据）
+    if (config.categories) {
+      for (const [name, data] of Object.entries(config.categories)) {
+        if (name === '自选' && !data.isDefault) {
+          config.categories[name] = { ...data, isDefault: true };
+        }
+      }
+      // 确保"持仓"分类存在且有 isHoldings 标识
+      if (!config.categories['持仓']) {
+        config.categories['持仓'] = { codes: [], title: '持仓', color: '#2e7d32', isHoldings: true };
+      } else if (!config.categories['持仓'].isHoldings) {
+        config.categories['持仓'] = { ...config.categories['持仓'], isHoldings: true };
+      }
+    } else {
+      // 如果没有分类，创建默认分类
+      config.categories = {
+        '自选': { codes: [], title: '自选', color: '#1976d2', isDefault: true },
+        '持仓': { codes: [], title: '持仓', color: '#2e7d32', isHoldings: true },
+      };
+    }
   } else {
     // 没有配置，使用默认配置
     console.log('IndexedDB 中没有配置，使用默认配置初始化');
@@ -225,7 +248,7 @@ export async function loadHoldingsConfig(): Promise<HoldingsConfig> {
 /**
  * 保存持仓配置（所有数据保存到 IndexedDB）
  */
-export async function saveHoldingsConfig(config: HoldingsConfig): Promise<void> {
+export async function saveHoldingsConfig(config: HoldingsConfig): Promise<HoldingsConfig> {
   try {
     // 1. 保存所有自选股到 watchlist 表
     const allCodes = new Set<string>();
@@ -334,12 +357,12 @@ export async function saveHoldingsConfig(config: HoldingsConfig): Promise<void> 
     
     // 2. 删除不在配置中的自选股（但保留交易记录）
     const watchlistItems = await loadAllWatchlistItems();
-    const allTransactions = await loadAllHoldingsTransactions();
+    const allTransactionsForDelete = await loadAllHoldingsTransactions();
     
     for (const code of Object.keys(watchlistItems)) {
       if (!allCodes.has(code)) {
         // 检查是否有交易记录，如果有则保留在 watchlist 中（作为历史持仓）
-        if (!allTransactions[code] || allTransactions[code].length === 0) {
+        if (!allTransactionsForDelete[code] || allTransactionsForDelete[code].length === 0) {
           // 没有交易记录，可以删除
           await deleteWatchlistItem(code);
         }
@@ -353,9 +376,28 @@ export async function saveHoldingsConfig(config: HoldingsConfig): Promise<void> 
 
     // 4. 保存配置到 IndexedDB（不包含交易数据和自选数据）
     await saveConfig(config);
+    
+    // 5. 重新加载所有交易记录，确保新添加的交易有ID，并更新配置
+    const allTransactions = await loadAllHoldingsTransactions();
+    const updatedConfig = { ...config };
+    for (const code of Object.keys(updatedConfig.holdings || {})) {
+      if (allTransactions[code] && allTransactions[code].length > 0) {
+        // 更新配置中的交易记录，确保它们都有ID
+        updatedConfig.holdings[code] = {
+          ...updatedConfig.holdings[code],
+          transactions: allTransactions[code],
+        };
+      }
+    }
+    
+    return updatedConfig;
   } catch (error) {
     console.error('保存配置失败:', error);
+    return config; // 出错时返回原配置
   }
+  
+  // 返回更新后的配置（包含交易ID）
+  return config;
 }
 
 /**
@@ -447,10 +489,20 @@ export async function resetToDefaultConfig(): Promise<HoldingsConfig> {
       }
     }
     
-    // 保存主配置
-    await saveConfig(defaultConfig);
+    // 保存主配置（清空 holdings 和 watchlist，因为它们应该从 watchlist 表和 transactions 表重建）
+    const configToSave = {
+      ...defaultConfig,
+      holdings: {}, // 重置时清空，从 watchlist 表和 transactions 表重建
+      watchlist: {}, // 重置时清空，从 watchlist 表重建
+    };
+    await saveConfig(configToSave);
     
-    return defaultConfig;
+    // 返回的配置也应该清空 holdings 和 watchlist
+    return {
+      ...defaultConfig,
+      holdings: {}, // 重置时清空，从 watchlist 表和 transactions 表重建
+      watchlist: {}, // 重置时清空，从 watchlist 表重建
+    };
   } catch (error) {
     console.error('重置数据失败:', error);
     throw error;

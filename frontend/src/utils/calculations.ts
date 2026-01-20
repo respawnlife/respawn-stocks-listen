@@ -55,13 +55,13 @@ export function formatStockCode(stockCode: string): string {
 }
 
 /**
- * 格式化价格：固定三位小数，不trim掉末尾的0
+ * 格式化价格：固定两位小数，不trim掉末尾的0
  */
 export function formatPriceFixed(price: number | null | undefined): string {
   if (price === null || price === undefined) {
     return '--';
   }
-  return price.toFixed(3);
+  return price.toFixed(2);
 }
 
 /**

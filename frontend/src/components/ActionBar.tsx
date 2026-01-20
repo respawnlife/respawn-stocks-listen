@@ -16,7 +16,7 @@ interface ActionBarProps {
   onOpenAllTransactionsDialog?: (fn: (stockCode?: string) => void) => void;
 }
 
-export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, onStockAdded, stockStates, onOpenTransactionDialog, onOpenAllTransactionsDialog }) => {
+export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, onStockAdded, stockStates, onOpenTransactionDialog, onOpenAllTransactionsDialog, onToggleCategorySidebar }) => {
   // 用于存储所有交易记录（包括历史持仓）
   const [allTransactionsData, setAllTransactionsData] = useState<{ [code: string]: Transaction[] }>({});
   
@@ -133,14 +133,46 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
       const seconds = String(now.getSeconds()).padStart(2, '0');
       const addTime = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
       
+      // 更新排序顺序：新添加的股票放在最后
+      const currentOrder = config.stock_order || [];
+      const newOrder = currentOrder.includes(code) 
+        ? currentOrder 
+        : [...currentOrder, code];
+      
+      // 确保默认分类存在
+      const categories = { ...config.categories || {} };
+      let defaultCatName = '自选';
+      // 查找是否已有默认分类
+      for (const [name, data] of Object.entries(categories)) {
+        if (data.isDefault === true) {
+          defaultCatName = name;
+          break;
+        }
+      }
+      // 如果不存在默认分类，创建一个
+      if (!categories[defaultCatName]) {
+        categories[defaultCatName] = { codes: [], title: defaultCatName, color: '#1976d2', isDefault: true };
+      }
+      // 将新股票添加到默认分类
+      const defaultCategory = categories[defaultCatName];
+      if (defaultCategory && !defaultCategory.codes.includes(code)) {
+        categories[defaultCatName] = {
+          ...defaultCategory,
+          codes: [...defaultCategory.codes, code],
+        };
+      }
+      
       const newConfig = {
         ...config,
+        stock_order: newOrder,
+        categories: categories,
         watchlist: {
           ...config.watchlist,
           [code]: {
             alert_up: null,
             alert_down: null,
             add_time: addTime,
+            categories: ['自选'], // 默认添加到"自选"分类
           },
         },
       };
@@ -410,8 +442,47 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
       ? config.funds.available_funds - totalAmount  // 买入减少资金
       : config.funds.available_funds + totalAmount;  // 卖出增加资金
 
+    // 更新排序顺序：如果股票不在排序顺序中，添加到末尾
+    const currentOrder = config.stock_order || [];
+    const newOrder = currentOrder.includes(code) 
+      ? currentOrder 
+      : [...currentOrder, code];
+    
+    // 确保默认分类存在，并将股票添加到默认分类（如果还没有分类）
+    const categories = { ...config.categories || {} };
+    let defaultCatName = '自选';
+    // 查找是否已有默认分类
+    for (const [name, data] of Object.entries(categories)) {
+      if (data.isDefault === true) {
+        defaultCatName = name;
+        break;
+      }
+    }
+    // 如果不存在默认分类，创建一个
+    if (!categories[defaultCatName]) {
+      categories[defaultCatName] = { codes: [], title: defaultCatName, color: '#1976d2', isDefault: true };
+    }
+    // 检查股票是否已经在某个分类中
+    let stockInCategory = false;
+    for (const catData of Object.values(categories)) {
+      if (catData && catData.codes && catData.codes.includes(code)) {
+        stockInCategory = true;
+        break;
+      }
+    }
+    // 如果不在任何分类中，添加到默认分类
+    if (!stockInCategory) {
+      const defaultCategory = categories[defaultCatName];
+      categories[defaultCatName] = {
+        ...defaultCategory,
+        codes: [...defaultCategory.codes, code],
+      };
+    }
+    
     const newConfig = {
       ...config,
+      stock_order: newOrder,
+      categories: categories,
       funds: {
         ...config.funds,
         available_funds: Math.max(0, newAvailableFunds), // 确保不为负数
@@ -534,7 +605,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
 
   return (
     <>
-      <Box sx={{ mb: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 0.5 }}>
+      <Box sx={{ mb: 0.5, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 0.5 }}>
         <Box sx={{ display: 'flex', gap: 0.5 }}>
           <Button
             variant="outlined"
@@ -579,13 +650,24 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
           >
             交易列表
           </Button>
+          <Button
+            variant="outlined"
+            size="small"
+            onClick={() => {
+              if ((window as any).__toggleCategorySidebar) {
+                (window as any).__toggleCategorySidebar();
+              }
+            }}
+          >
+            自选分组
+          </Button>
         </Box>
       </Box>
 
       {/* 添加自选股对话框 */}
       <Dialog open={open} onClose={handleClose} maxWidth="xs" fullWidth>
-        <DialogTitle sx={{ pb: 1 }}>添加自选股</DialogTitle>
-        <DialogContent sx={{ pt: 1 }}>
+        <DialogTitle sx={{ pb: 0.5 }}>添加自选股</DialogTitle>
+        <DialogContent sx={{ pt: 0.5 }}>
           <TextField
             autoFocus
             size="small"
@@ -608,7 +690,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
             }}
           />
         </DialogContent>
-        <DialogActions sx={{ px: 2, pb: 1.5 }}>
+        <DialogActions sx={{ px: 1, pb: 0.5 }}>
           <Button size="small" onClick={handleClose} disabled={loading}>
             取消
           </Button>
@@ -766,7 +848,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
             )}
           </Box>
         </DialogContent>
-        <DialogActions sx={{ px: 2, pb: 1.5 }}>
+        <DialogActions sx={{ px: 1, pb: 0.5 }}>
           <Button size="small" onClick={handleCloseTransaction} disabled={transactionLoading}>
             取消
           </Button>
@@ -783,8 +865,8 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
 
       {/* 增减本金对话框 */}
       <Dialog open={openFundsDialog} onClose={handleCloseFundsDialog} maxWidth="xs" fullWidth>
-        <DialogTitle sx={{ pb: 1 }}>增减本金</DialogTitle>
-        <DialogContent sx={{ pt: 1 }}>
+        <DialogTitle sx={{ pb: 0.5 }}>增减本金</DialogTitle>
+        <DialogContent sx={{ pt: 0.5 }}>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
             <FormControl fullWidth>
               <InputLabel>操作类型</InputLabel>
@@ -808,7 +890,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
               helperText={fundsOperation === 'add' ? '增加本金时，可用资金也会同步增加' : '减少本金时，可用资金也会同步减少'}
             />
             {fundsOperation === 'subtract' && (
-              <Box sx={{ p: 1, backgroundColor: '#fff3cd', borderRadius: 1 }}>
+              <Box sx={{ p: 0.5, backgroundColor: '#fff3cd', borderRadius: 0 }}>
                 <Typography variant="body2" sx={{ color: '#856404', fontSize: '0.75rem' }}>
                   当前本金：{config.funds.total_original_funds.toFixed(2)} | 可用：{config.funds.available_funds.toFixed(2)}
                   <br />
@@ -817,7 +899,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
               </Box>
             )}
             {fundsOperation === 'add' && (
-              <Box sx={{ p: 1, backgroundColor: '#d1ecf1', borderRadius: 1 }}>
+              <Box sx={{ p: 0.5, backgroundColor: '#d1ecf1', borderRadius: 0 }}>
                 <Typography variant="body2" sx={{ color: '#0c5460', fontSize: '0.75rem' }}>
                   当前本金：{config.funds.total_original_funds.toFixed(2)} | 可用：{config.funds.available_funds.toFixed(2)}
                   <br />
@@ -827,7 +909,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
             )}
           </Box>
         </DialogContent>
-        <DialogActions sx={{ px: 2, pb: 1.5 }}>
+        <DialogActions sx={{ px: 1, pb: 0.5 }}>
           <Button size="small" onClick={handleCloseFundsDialog}>取消</Button>
           <Button
             size="small"
@@ -842,8 +924,8 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
 
       {/* 增减可用资金对话框 */}
       <Dialog open={openAvailableFundsDialog} onClose={handleCloseAvailableFundsDialog} maxWidth="xs" fullWidth>
-        <DialogTitle sx={{ pb: 1 }}>增减可用资金</DialogTitle>
-        <DialogContent sx={{ pt: 1 }}>
+        <DialogTitle sx={{ pb: 0.5 }}>增减可用资金</DialogTitle>
+        <DialogContent sx={{ pt: 0.5 }}>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
             <FormControl fullWidth size="small">
               <InputLabel>操作类型</InputLabel>
@@ -868,7 +950,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
               helperText={availableFundsOperation === 'add' ? '增加可用资金（不影响本金）' : '减少可用资金（不影响本金）'}
             />
             {availableFundsOperation === 'subtract' && (
-              <Box sx={{ p: 1, backgroundColor: '#fff3cd', borderRadius: 1 }}>
+              <Box sx={{ p: 0.5, backgroundColor: '#fff3cd', borderRadius: 0 }}>
                 <Typography variant="body2" sx={{ color: '#856404', fontSize: '0.75rem' }}>
                   当前可用资金：{config.funds.available_funds.toFixed(2)}
                   <br />
@@ -877,7 +959,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
               </Box>
             )}
             {availableFundsOperation === 'add' && (
-              <Box sx={{ p: 1, backgroundColor: '#d1ecf1', borderRadius: 1 }}>
+              <Box sx={{ p: 0.5, backgroundColor: '#d1ecf1', borderRadius: 0 }}>
                 <Typography variant="body2" sx={{ color: '#0c5460', fontSize: '0.75rem' }}>
                   当前可用资金：{config.funds.available_funds.toFixed(2)}
                   <br />
@@ -887,7 +969,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
             )}
           </Box>
         </DialogContent>
-        <DialogActions sx={{ px: 2, pb: 1.5 }}>
+        <DialogActions sx={{ px: 1, pb: 0.5 }}>
           <Button size="small" onClick={handleCloseAvailableFundsDialog}>取消</Button>
           <Button
             size="small"
@@ -902,7 +984,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
 
       {/* 查看所有交易对话框 */}
       <Dialog open={openHistoryDialog} onClose={handleCloseHistoryDialog} maxWidth="lg" fullWidth>
-        <DialogTitle>
+        <DialogTitle sx={{ pb: 0.5 }}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <Typography variant="h6">所有交易记录</Typography>
             <Button
@@ -921,9 +1003,9 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
             </Button>
           </Box>
         </DialogTitle>
-        <DialogContent>
+        <DialogContent sx={{ pt: 0.5 }}>
           {/* 筛选区域 - 紧凑型横向布局 */}
-          <Box sx={{ mt: 1, mb: 1, p: 1, border: '1px solid #e0e0e0', borderRadius: 1 }}>
+          <Box sx={{ mt: 0.5, mb: 0.5, p: 0.5, border: '1px solid #e0e0e0', borderRadius: 0 }}>
             <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
               {/* 股票筛选 */}
               <FormControl size="small" sx={{ minWidth: 100 }}>
@@ -1209,16 +1291,16 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
             );
           })()}
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ px: 1, pb: 0.5 }}>
           <Button onClick={handleCloseHistoryDialog}>关闭</Button>
         </DialogActions>
       </Dialog>
 
       {/* 编辑交易对话框 */}
       <Dialog open={!!editingHistoryTransaction} onClose={() => setEditingHistoryTransaction(null)} maxWidth="sm" fullWidth>
-        <DialogTitle>编辑交易记录</DialogTitle>
-        <DialogContent>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
+        <DialogTitle sx={{ pb: 0.5 }}>编辑交易记录</DialogTitle>
+        <DialogContent sx={{ pt: 0.5 }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, mt: 0.5 }}>
             <TextField
               label="交易时间"
               type="datetime-local"
@@ -1303,7 +1385,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({ config, onConfigUpdate, on
             })()}
           </Box>
         </DialogContent>
-        <DialogActions sx={{ px: 2, pb: 1.5 }}>
+        <DialogActions sx={{ px: 1, pb: 0.5 }}>
           <Button size="small" onClick={() => setEditingHistoryTransaction(null)}>取消</Button>
           <Button
             onClick={async () => {

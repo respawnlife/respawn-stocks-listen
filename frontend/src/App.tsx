@@ -20,6 +20,55 @@ const theme = createTheme({
       main: '#1976d2',
     },
   },
+  shape: {
+    borderRadius: 0, // 移除所有圆角
+  },
+  components: {
+    MuiPaper: {
+      styleOverrides: {
+        root: {
+          borderRadius: 0, // 移除Paper的圆角
+        },
+      },
+    },
+    MuiButton: {
+      styleOverrides: {
+        root: {
+          borderRadius: 0, // 移除Button的圆角
+        },
+      },
+    },
+    MuiChip: {
+      styleOverrides: {
+        root: {
+          borderRadius: 0, // 移除Chip的圆角
+        },
+      },
+    },
+    MuiTextField: {
+      styleOverrides: {
+        root: {
+          '& .MuiOutlinedInput-root': {
+            borderRadius: 0, // 移除TextField的圆角
+          },
+        },
+      },
+    },
+    MuiSelect: {
+      styleOverrides: {
+        root: {
+          borderRadius: 0, // 移除Select的圆角
+        },
+      },
+    },
+    MuiDialog: {
+      styleOverrides: {
+        paper: {
+          borderRadius: 0, // 移除Dialog的圆角
+        },
+      },
+    },
+  },
 });
 
 // POLL_INTERVAL 现在从 config.update_interval 动态获取，默认1000ms
@@ -453,9 +502,38 @@ function App() {
 
   // 不再定期检查配置变化，改为在增删改操作时主动保存
 
-  const stocksArray = Array.from(stockStates.values()).sort((a, b) =>
-    a.code.localeCompare(b.code)
-  );
+  // 根据配置的排序顺序对股票进行排序
+  const stocksArray = React.useMemo(() => {
+    const stocks = Array.from(stockStates.values());
+    const order = config?.stock_order || [];
+    
+    // 如果有排序顺序，按照顺序排序
+    if (order.length > 0) {
+      const orderMap = new Map(order.map((code, index) => [code, index]));
+      return stocks.sort((a, b) => {
+        const aIndex = orderMap.get(a.code);
+        const bIndex = orderMap.get(b.code);
+        
+        // 如果两个都在排序列表中，按照排序列表的顺序
+        if (aIndex !== undefined && bIndex !== undefined) {
+          return aIndex - bIndex;
+        }
+        // 如果只有a在排序列表中，a排在前面
+        if (aIndex !== undefined) {
+          return -1;
+        }
+        // 如果只有b在排序列表中，b排在前面
+        if (bIndex !== undefined) {
+          return 1;
+        }
+        // 如果都不在排序列表中，按照代码排序
+        return a.code.localeCompare(b.code);
+      });
+    }
+    
+    // 如果没有排序顺序，按照代码排序
+    return stocks.sort((a, b) => a.code.localeCompare(b.code));
+  }, [stockStates, config?.stock_order]);
 
   // 切换隐私模式
   const handlePrivacyModeToggle = async () => {
@@ -464,18 +542,53 @@ function App() {
       ...config,
       privacy_mode: !config.privacy_mode,
     };
-    setConfig(newConfig);
-    configRef.current = newConfig;
-    await saveHoldingsConfig(newConfig);
+    const updatedConfig = await saveHoldingsConfig(newConfig);
+    setConfig(updatedConfig);
+    configRef.current = updatedConfig;
   };
 
   // 处理配置更新（添加自选股后）
   const handleConfigUpdate = async (newConfig: HoldingsConfig) => {
-    setConfig(newConfig);
+    // 自动更新"持仓"分类：根据持仓数量自动添加或移除股票
+    const updatedConfig = { ...newConfig };
+    const categories = updatedConfig.categories || {};
+    
+    // 确保持仓分类存在
+    let holdingsCatName = '持仓';
+    for (const [name, data] of Object.entries(categories)) {
+      if (data.isHoldings === true) {
+        holdingsCatName = name;
+        break;
+      }
+    }
+    
+    if (!categories[holdingsCatName]) {
+      categories[holdingsCatName] = { codes: [], title: holdingsCatName, color: '#2e7d32', isHoldings: true };
+    }
+    
+    // 收集所有有持仓的股票代码
+    const holdingsCodes = new Set<string>();
+    for (const [code, holding] of Object.entries(updatedConfig.holdings || {})) {
+      const transactions = Array.isArray(holding.transactions) ? holding.transactions : [];
+      const [holdingQuantity] = calculateHoldingFromTransactions(transactions);
+      if (holdingQuantity > 0) {
+        holdingsCodes.add(code);
+      }
+    }
+    
+    // 更新持仓分类的股票列表
+    categories[holdingsCatName] = {
+      ...categories[holdingsCatName],
+      codes: Array.from(holdingsCodes),
+    };
+    
+    updatedConfig.categories = categories;
+    
+    // 保存到 IndexedDB，并获取更新后的配置（包含交易ID）
+    const finalConfig = await saveHoldingsConfig(updatedConfig);
+    setConfig(finalConfig);
     // 立即更新 configRef，确保后续操作能获取到最新配置
-    configRef.current = newConfig;
-    // 保存到 IndexedDB
-    await saveHoldingsConfig(newConfig);
+    configRef.current = finalConfig;
   };
 
   // 更新页面 title
@@ -615,7 +728,7 @@ function App() {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-        <Container maxWidth="xl" sx={{ mt: 2, mb: 8, pb: 2 }}>
+        <Container maxWidth="xl" sx={{ mt: 0, mb: 0, pb: 0, px: 0 }}>
           <Statistics
           stocks={stocksArray}
           funds={config.funds}
@@ -653,6 +766,10 @@ function App() {
             if (openAllTransactionsDialogRef.current) {
               openAllTransactionsDialogRef.current(code);
             }
+          }}
+          onToggleCategorySidebar={(fn) => {
+            // 存储切换函数供 ActionBar 使用
+            (window as any).__toggleCategorySidebar = fn;
           }}
         />
         <Snackbar
