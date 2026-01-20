@@ -25,7 +25,10 @@ writeFileSync(join(__dirname, 'src/version.ts'), versionContent);
 console.log(`✓ Generated version: ${version}`);
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react({
+    // 确保 React 被正确优化和打包
+    jsxRuntime: 'automatic',
+  })],
   server: {
     port: 3000,
     open: true,
@@ -43,10 +46,11 @@ export default defineConfig({
             if (id.includes('lightweight-charts')) {
               return 'charts';
             }
-            // 将 React 和 MUI 放在一起，避免循环依赖和初始化顺序问题
-            // MUI 强依赖 React，合并可以确保正确的加载顺序
+            // 将 React 和所有依赖 React 的库放在一起，避免循环依赖和初始化顺序问题
+            // 包括：React、ReactDOM、MUI、Emotion、dnd-kit（它们都依赖 React）
             if (id.includes('react') || id.includes('react-dom') || 
-                id.includes('@mui') || id.includes('@emotion')) {
+                id.includes('@mui') || id.includes('@emotion') ||
+                id.includes('@dnd-kit')) {
               return 'react-mui';
             }
             // 其他 node_modules 依赖
