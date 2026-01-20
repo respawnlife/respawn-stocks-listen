@@ -130,6 +130,7 @@ export async function initializeConfig(): Promise<HoldingsConfig> {
       config.watchlist[code] = {
         alerts: alerts && alerts.length > 0 ? alerts : undefined,
         add_time: addTime,
+        categories: watchlistItem.categories, // 保留分类信息
         // 向后兼容
         alert_up: watchlistItem.alert_up,
         alert_down: watchlistItem.alert_down,
@@ -147,6 +148,130 @@ export async function initializeConfig(): Promise<HoldingsConfig> {
 
   // 历史持仓现在通过 watchlist 和 transactions 表管理，不再需要单独的 historical_holdings 数组
   config.historical_holdings = [];
+
+  // 数据迁移：将没有分组的股票自动添加到对应的默认分组
+  const allStockCodes = new Set<string>();
+  Object.keys(config.holdings || {}).forEach(code => allStockCodes.add(code));
+  Object.keys(config.watchlist || {}).forEach(code => allStockCodes.add(code));
+  
+  // 确保 categories 存在
+  if (!config.categories) {
+    config.categories = {
+      '自选': { codes: [], title: '自选', color: '#1976d2', isDefault: true },
+      '持仓': { codes: [], title: '持仓', color: '#2e7d32', isHoldings: true },
+    };
+  }
+
+  // 获取默认分组名称
+  let defaultCatName: string | null = null;
+  let holdingsCatName: string | null = null;
+  for (const [name, data] of Object.entries(config.categories)) {
+    if (data.isDefault === true) {
+      defaultCatName = name;
+    }
+    if (data.isHoldings === true) {
+      holdingsCatName = name;
+    }
+  }
+  
+  // 如果没有默认分组，创建它们
+  if (!defaultCatName) {
+    defaultCatName = '自选';
+    if (!config.categories[defaultCatName]) {
+      config.categories[defaultCatName] = { codes: [], title: '自选', color: '#1976d2', isDefault: true };
+    } else {
+      config.categories[defaultCatName] = { ...config.categories[defaultCatName], isDefault: true };
+    }
+  }
+  
+  if (!holdingsCatName) {
+    holdingsCatName = '持仓';
+    if (!config.categories[holdingsCatName]) {
+      config.categories[holdingsCatName] = { codes: [], title: '持仓', color: '#2e7d32', isHoldings: true };
+    } else {
+      config.categories[holdingsCatName] = { ...config.categories[holdingsCatName], isHoldings: true };
+    }
+  }
+
+  // 收集所有已经在分组中的股票代码
+  const stocksInCategories = new Set<string>();
+  for (const catData of Object.values(config.categories)) {
+    if (catData.codes) {
+      catData.codes.forEach(code => stocksInCategories.add(code));
+    }
+  }
+  
+  // 检查 watchlist 中的股票是否有 categories 字段
+  for (const [code, watchlistItem] of Object.entries(config.watchlist || {})) {
+    if (watchlistItem.categories && watchlistItem.categories.length > 0) {
+      // 有 categories 字段，确保这些分组包含该股票
+      for (const catName of watchlistItem.categories) {
+        if (config.categories[catName]) {
+          if (!config.categories[catName].codes) {
+            config.categories[catName].codes = [];
+          }
+          if (!config.categories[catName].codes.includes(code)) {
+            config.categories[catName].codes.push(code);
+            stocksInCategories.add(code);
+          }
+        }
+      }
+    }
+  }
+
+  // 将没有分组的股票添加到对应的默认分组
+  let needsMigration = false;
+  for (const code of allStockCodes) {
+    if (!stocksInCategories.has(code)) {
+      // 该股票不在任何分组中，需要迁移
+      needsMigration = true;
+      const isHolding = code in (config.holdings || {});
+      const targetCategory = isHolding ? holdingsCatName! : defaultCatName!;
+      
+      // 确保目标分组存在
+      if (!config.categories[targetCategory]) {
+        if (targetCategory === defaultCatName) {
+          config.categories[targetCategory] = { codes: [], title: '自选', color: '#1976d2', isDefault: true };
+        } else {
+          config.categories[targetCategory] = { codes: [], title: '持仓', color: '#2e7d32', isHoldings: true };
+        }
+      }
+      
+      // 确保 codes 数组存在
+      if (!config.categories[targetCategory].codes) {
+        config.categories[targetCategory].codes = [];
+      }
+      
+      // 添加到分组
+      if (!config.categories[targetCategory].codes.includes(code)) {
+        config.categories[targetCategory].codes.push(code);
+      }
+      
+      // 如果是 watchlist 中的股票，更新其 categories 字段
+      if (code in (config.watchlist || {})) {
+        const watchlistItem = config.watchlist[code];
+        if (!watchlistItem.categories || watchlistItem.categories.length === 0) {
+          watchlistItem.categories = [targetCategory];
+          // 更新到数据库
+          await saveWatchlistItem({
+            code,
+            name: code,
+            alert_up: watchlistItem.alert_up,
+            alert_down: watchlistItem.alert_down,
+            add_time: watchlistItem.add_time,
+            categories: [targetCategory],
+          });
+        }
+      }
+    }
+  }
+  
+  // 如果有迁移，保存配置
+  if (needsMigration) {
+    console.log('检测到旧数据，正在迁移到分组系统...');
+    await saveConfig(config);
+    console.log('数据迁移完成');
+  }
 
   return config;
 }
@@ -224,6 +349,7 @@ export async function loadHoldingsConfig(): Promise<HoldingsConfig> {
       config.watchlist[code] = {
         alerts: alerts && alerts.length > 0 ? alerts : undefined,
         add_time: addTime,
+        categories: watchlistItem.categories, // 保留分类信息
         // 向后兼容
         alert_up: watchlistItem.alert_up,
         alert_down: watchlistItem.alert_down,

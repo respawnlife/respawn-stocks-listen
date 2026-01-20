@@ -7,6 +7,7 @@ export interface WatchlistItem {
   alert_up: number | null;
   alert_down: number | null;
   add_time?: string; // 添加自选的时间（YYYY-MM-DD HH:mm:ss格式）
+  categories?: string[]; // 所属分类数组（支持多个分类）
 }
 
 // 交易表项
