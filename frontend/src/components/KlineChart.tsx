@@ -43,6 +43,7 @@ export const KlineChart: React.FC<KlineChartProps> = ({ open, onClose, stockCode
   const [tooltipData, setTooltipData] = useState<{ x: number; y: number; transactions: Transaction[]; date: string } | null>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
   const [showPriceRange, setShowPriceRange] = useState(false);
+  const refreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
   
   // 加载交易数据
   const loadTransactions = React.useCallback(async () => {
@@ -739,13 +740,11 @@ export const KlineChart: React.FC<KlineChartProps> = ({ open, onClose, stockCode
     }
   }, [open, stockCode, loadTransactions]);
 
-  // 当周期改变时，重新加载数据
   useEffect(() => {
     if (!open || !chartRef.current || !candlestickSeriesRef.current) {
       return;
     }
 
-    // 延迟一下，确保图表已经完全初始化
     const timer = setTimeout(() => {
       loadKlineData();
     }, 100);
@@ -754,6 +753,55 @@ export const KlineChart: React.FC<KlineChartProps> = ({ open, onClose, stockCode
       clearTimeout(timer);
     };
   }, [period, open, loadKlineData]);
+
+  useEffect(() => {
+    if (!open) {
+      if (refreshIntervalRef.current) {
+        clearInterval(refreshIntervalRef.current);
+        refreshIntervalRef.current = null;
+      }
+      return;
+    }
+
+    const refreshInterval = 5 * 60 * 1000;
+
+    const refreshData = async () => {
+      const now = new Date();
+      const hours = now.getHours();
+      const minutes = now.getMinutes();
+      const currentTime = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+      
+      const weekday = now.getDay();
+      if (weekday === 0 || weekday === 6) {
+        return;
+      }
+      
+      const isMorningTrading = currentTime >= '09:30' && currentTime <= '11:30';
+      const isAfternoonTrading = currentTime >= '13:00' && currentTime <= '15:00';
+      
+      if (!isMorningTrading && !isAfternoonTrading) {
+        return;
+      }
+
+      try {
+        console.log(`[K线自动刷新] ${new Date().toLocaleTimeString()} 开始刷新 ${stockCode} 的 ${period} K线数据`);
+        await loadKlineData();
+        console.log(`[K线自动刷新] ${new Date().toLocaleTimeString()} 完成刷新 ${stockCode} 的 ${period} K线数据`);
+      } catch (error) {
+        console.error(`[K线自动刷新] 刷新失败:`, error);
+      }
+    };
+
+    refreshData();
+    refreshIntervalRef.current = setInterval(refreshData, refreshInterval);
+
+    return () => {
+      if (refreshIntervalRef.current) {
+        clearInterval(refreshIntervalRef.current);
+        refreshIntervalRef.current = null;
+      }
+    };
+  }, [open, stockCode, period, loadKlineData]);
 
   const handlePeriodChange = (_event: React.MouseEvent<HTMLElement>, newPeriod: KlinePeriod | null) => {
     if (newPeriod !== null) {

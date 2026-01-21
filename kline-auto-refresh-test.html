@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>K线自动刷新测试</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-container { max-width: 800px; margin: 0 auto; }
+        .log { 
+            background: #f5f5f5; 
+            padding: 10px; 
+            margin: 10px 0; 
+            border-radius: 4px; 
+            font-family: monospace; 
+            font-size: 12px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .success { color: green; }
+        .error { color: red; }
+        .info { color: blue; }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <h1>K线图表自动刷新功能测试</h1>
+        <p>这个页面用于测试K线图表的自动刷新功能是否正常工作。</p>
+        
+        <h2>测试说明</h2>
+        <ul>
+            <li>打开K线图表后，应该每5分钟自动刷新一次</li>
+            <li>只在交易时间内刷新（工作日9:30-11:30, 13:00-15:00）</li>
+            <li>刷新时会在控制台输出日志</li>
+        </ul>
+        
+        <h2>测试步骤</h2>
+        <ol>
+            <li>打开主应用页面</li>
+            <li>点击任意股票的"K图"按钮</li>
+            <li>打开浏览器开发者工具（F12）</li>
+            <li>切换到Console标签页</li>
+            <li>观察是否有自动刷新日志输出</li>
+        </ol>
+        
+        <h2>预期日志输出</h2>
+        <div class="log">
+            <div class="info">[K线自动刷新] 16:26:02 开始刷新 002255 的 day K线数据</div>
+            <div class="info">[K线自动刷新] 16:26:03 完成刷新 002255 的 day K线数据</div>
+            <div class="info">[K线自动刷新] 16:31:02 开始刷新 002255 的 day K线数据</div>
+            <div class="info">[K线自动刷新] 16:31:03 完成刷新 002255 的 day K线数据</div>
+        </div>
+        
+        <h2>功能验证</h2>
+        <p>✅ 已实现功能：</p>
+        <ul>
+            <li>每5分钟自动刷新K线数据</li>
+            <li>只在交易时间内刷新</li>
+            <li>控制台日志输出</li>
+            <li>对话框关闭时清理定时器</li>
+        </ul>
+        
+        <p>⚠️ 注意事项：</p>
+        <ul>
+            <li>如果当前不在交易时间，不会自动刷新</li>
+            <li>周末不会自动刷新</li>
+            <li>刷新间隔为5分钟，避免频繁API调用</li>
+        </ul>
+        
+        <h2>技术实现</h2>
+        <p>在 <code>KlineChart.tsx</code> 中添加了以下功能：</p>
+        <ul>
+            <li><code>refreshIntervalRef</code> - 用于存储定时器引用</li>
+            <li><code>useEffect</code> - 设置和清理自动刷新定时器</li>
+            <li>交易时间检查 - 确保只在有效时间内刷新</li>
+            <li>错误处理 - 捕获并记录刷新失败</li>
+        </ul>
+    </div>
+</body>
+</html>
